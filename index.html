@@ -743,6 +743,8 @@
           <button class="btn blue" id="btn_dim_bg" type="button">Dim BG</button>
           <button class="btn amber" id="btn_face_mosaic" type="button">Face Mosaic</button>
           <button class="btn amber" id="btn_mosaic_size" type="button">Pixel M</button>
+          <button class="btn blue" id="btn_depth_layer" type="button">Pixel Art</button>
+          <button class="btn blue" id="btn_scan_3d" type="button">3D Scan</button>
         </div>
       </section>
 
@@ -766,6 +768,8 @@
         <div class="grid">
           <button class="btn amber" id="btn_particle_mode" type="button">Particle Mode</button>
           <button class="btn amber" id="btn_particle_density" type="button">Particles M</button>
+          <button class="btn amber" id="btn_particle_size" type="button">Size M</button>
+          <button class="btn amber" id="btn_particle_color" type="button">Scene Color</button>
         </div>
         <div class="status-line"><span>현재 제스처</span><strong id="gesture_status">IDLE</strong></div>
         <div class="status-line"><span>입자 상한</span><strong id="particle_limit_status">320</strong></div>
@@ -907,11 +911,15 @@
       btnDimBg: document.getElementById("btn_dim_bg"),
       btnFaceMosaic: document.getElementById("btn_face_mosaic"),
       btnMosaicSize: document.getElementById("btn_mosaic_size"),
+      btnDepthLayer: document.getElementById("btn_depth_layer"),
+      btnScan3D: document.getElementById("btn_scan_3d"),
       btnWireField: document.getElementById("btn_wire_field"),
       btnWireIntensity: document.getElementById("btn_wire_intensity"),
       wireStatus: document.getElementById("wire_status"),
       btnParticleMode: document.getElementById("btn_particle_mode"),
       btnParticleDensity: document.getElementById("btn_particle_density"),
+      btnParticleSize: document.getElementById("btn_particle_size"),
+      btnParticleColor: document.getElementById("btn_particle_color"),
       gestureStatus: document.getElementById("gesture_status"),
       gestureVal: document.getElementById("gesture_val"),
       particleVal: document.getElementById("particle_val"),
@@ -959,6 +967,13 @@
       storm: { label: "Part Max", scale: 5.5 }
     };
     const PARTICLE_ORDER = ["small", "medium", "large", "xlarge", "ultra", "storm"];
+    const PARTICLE_SIZE = {
+      small: { label: "Size S", scale: 0.72 },
+      medium: { label: "Size M", scale: 1 },
+      large: { label: "Size L", scale: 1.45 },
+      xlarge: { label: "Size XL", scale: 2.05 }
+    };
+    const PARTICLE_SIZE_ORDER = ["small", "medium", "large", "xlarge"];
     const PARTICLE_KIND_COLORS = [
       "rgba(0,255,204,",
       "rgba(255,204,102,",
@@ -1030,12 +1045,16 @@
       xray: false,
       scanline: false,
       dimBg: false,
+      depthLayer: false,
+      scan3D: false,
       faceMosaic: false,
       mosaicSize: "medium",
       wireField: false,
       wireIntensity: "medium",
       particleMode: false,
       particleDensity: "medium",
+      particleSize: "medium",
+      particleSceneColor: false,
       gestureLabel: "IDLE",
       lastOpenBurstAt: 0,
       lastGestureAt: ["IDLE", "IDLE"],
@@ -1064,6 +1083,11 @@
       faceBoxes: [],
       mosaicCanvas: document.createElement("canvas"),
       mosaicCtx: null,
+      depthSampleCanvas: document.createElement("canvas"),
+      depthSampleCtx: null,
+      particleColorCanvas: document.createElement("canvas"),
+      particleColorCtx: null,
+      particleColorFrame: null,
       particleCursor: 0,
       particleAlive: 0,
       particles: null,
@@ -1074,6 +1098,8 @@
     };
 
     state.mosaicCtx = state.mosaicCanvas.getContext("2d", { alpha: false });
+    state.depthSampleCtx = state.depthSampleCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    state.particleColorCtx = state.particleColorCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
 
     function getActiveProfile() {
       return PROFILES[state.profile] || PROFILES.balanced;
@@ -1094,6 +1120,24 @@
       DOM.captionKicker.textContent = copy[0];
       DOM.captionMain.textContent = copy[1];
       DOM.captionSub.textContent = copy[2];
+    }
+
+    function showWireCaption() {
+      DOM.captionKicker.textContent = "2-2 / DIGITAL WIRE FIELD";
+      DOM.captionMain.textContent = "트래킹 포인트가 서로 엉키는 디지털 와이어";
+      DOM.captionSub.textContent = "손 · 얼굴 · 주변 앵커 연결선 · 글리치 노드 · 깊이감 있는 메쉬 렌더링";
+    }
+
+    function showScan3DCaption() {
+      DOM.captionKicker.textContent = "2-3 / 3D TRACKING SCAN";
+      DOM.captionMain.textContent = "화면과 정렬된 3D 스캔 포인트 클라우드";
+      DOM.captionSub.textContent = "카메라 좌표 보정 · 깊이 포인트 · 스캔 라인 · 손/입자 정렬";
+    }
+
+    function showPixelArtCaption() {
+      DOM.captionKicker.textContent = "2-4 / PIXEL ART MAP";
+      DOM.captionMain.textContent = "카메라 화면을 픽셀 아트 뎁스 맵으로 변환";
+      DOM.captionSub.textContent = "밝기/엣지 기반 컬러 픽셀 · 고대비 포인트 렌더링";
     }
 
     function updateProfileUI() {
@@ -1199,6 +1243,21 @@
       }
     }
 
+    function updateParticleSizeUI() {
+      const size = PARTICLE_SIZE[state.particleSize] || PARTICLE_SIZE.medium;
+      if (DOM.btnParticleSize) {
+        DOM.btnParticleSize.textContent = size.label;
+        DOM.btnParticleSize.classList.toggle("active", state.particleSize !== "medium");
+      }
+    }
+
+    function updateParticleColorUI() {
+      if (DOM.btnParticleColor) {
+        DOM.btnParticleColor.textContent = state.particleSceneColor ? "Color ON" : "Scene Color";
+        DOM.btnParticleColor.classList.toggle("active", state.particleSceneColor);
+      }
+    }
+
     function setupUI() {
       DOM.btnOpenDrawer.addEventListener("click", () => toggleDrawer(true));
       DOM.btnCloseDrawer.addEventListener("click", () => toggleDrawer(false));
@@ -1237,6 +1296,33 @@
         DOM.btnDimBg.classList.toggle("active", state.dimBg);
       });
 
+      DOM.btnDepthLayer.addEventListener("click", () => {
+        state.depthLayer = !state.depthLayer;
+        DOM.btnDepthLayer.classList.toggle("active", state.depthLayer);
+        DOM.btnDepthLayer.textContent = state.depthLayer ? "Pixel ON" : "Pixel Art";
+        if (state.depthLayer && !state.scan3D) {
+          showPixelArtCaption();
+        } else if (state.scan3D) {
+          showScan3DCaption();
+        } else if (!state.particleMode && !state.wireField) {
+          updateCaption();
+        }
+      });
+
+      DOM.btnScan3D.addEventListener("click", () => {
+        state.scan3D = !state.scan3D;
+        DOM.btnScan3D.classList.toggle("active", state.scan3D);
+        if (state.scan3D) {
+          showScan3DCaption();
+        } else if (state.wireField) {
+          showWireCaption();
+        } else if (state.depthLayer) {
+          showPixelArtCaption();
+        } else if (!state.particleMode && !state.wireField) {
+          updateCaption();
+        }
+      });
+
       DOM.btnFaceMosaic.addEventListener("click", async () => {
         state.faceMosaic = !state.faceMosaic;
         DOM.btnFaceMosaic.classList.toggle("active", state.faceMosaic);
@@ -1264,9 +1350,11 @@
         state.wireField = !state.wireField;
         updateWireUI();
         if (state.wireField) {
-          DOM.captionKicker.textContent = "2-2 / DIGITAL WIRE FIELD";
-          DOM.captionMain.textContent = "트래킹 포인트가 서로 엉키는 디지털 와이어";
-          DOM.captionSub.textContent = "손 · 얼굴 · 주변 앵커 연결선 · 글리치 노드 · 깊이감 있는 메쉬 렌더링";
+          showWireCaption();
+        } else if (state.scan3D) {
+          showScan3DCaption();
+        } else if (state.depthLayer) {
+          showPixelArtCaption();
         } else if (!state.particleMode) {
           updateCaption();
         }
@@ -1291,10 +1379,12 @@
           state.gestureLabel = "IDLE";
           DOM.gestureStatus.textContent = "IDLE";
           DOM.gestureVal.textContent = "IDLE";
-          if (state.wireField) {
-            DOM.captionKicker.textContent = "2-2 / DIGITAL WIRE FIELD";
-            DOM.captionMain.textContent = "트래킹 포인트가 서로 엉키는 디지털 와이어";
-            DOM.captionSub.textContent = "손 · 얼굴 · 주변 앵커 연결선 · 글리치 노드 · 깊이감 있는 메쉬 렌더링";
+          if (state.scan3D) {
+            showScan3DCaption();
+          } else if (state.wireField) {
+            showWireCaption();
+          } else if (state.depthLayer) {
+            showPixelArtCaption();
           } else {
             updateCaption();
           }
@@ -1306,6 +1396,17 @@
         state.particleDensity = PARTICLE_ORDER[(index + 1) % PARTICLE_ORDER.length];
         updateParticleDensityUI();
         ensureParticlePool(true);
+      });
+
+      DOM.btnParticleSize.addEventListener("click", () => {
+        const index = PARTICLE_SIZE_ORDER.indexOf(state.particleSize);
+        state.particleSize = PARTICLE_SIZE_ORDER[(index + 1) % PARTICLE_SIZE_ORDER.length];
+        updateParticleSizeUI();
+      });
+
+      DOM.btnParticleColor.addEventListener("click", () => {
+        state.particleSceneColor = !state.particleSceneColor;
+        updateParticleColorUI();
       });
 
       DOM.btnMaxHands.addEventListener("click", async () => {
@@ -1351,6 +1452,8 @@
       updateProfileUI();
       updateWireUI();
       updateParticleDensityUI();
+      updateParticleSizeUI();
+      updateParticleColorUI();
     }
 
     function updateCameraView(image) {
@@ -2171,9 +2274,53 @@
       }
     }
 
+    function captureParticleColorFrame() {
+      if (!state.particleSceneColor || !state.particleColorCanvas || !state.particleColorCtx) return;
+
+      const sampleW = state.isMobile ? 96 : 144;
+      const sampleH = Math.max(1, Math.round(sampleW * state.height / Math.max(1, state.width)));
+      const sample = state.particleColorCanvas;
+      const sctx = state.particleColorCtx;
+
+      if (sample.width !== sampleW || sample.height !== sampleH) {
+        sample.width = sampleW;
+        sample.height = sampleH;
+        state.particleColorCtx = sample.getContext("2d", { alpha: false, willReadFrequently: true });
+      }
+
+      state.particleColorCtx.imageSmoothingEnabled = true;
+      state.particleColorCtx.drawImage(ctx.canvas, 0, 0, state.width, state.height, 0, 0, sampleW, sampleH);
+
+      try {
+        state.particleColorFrame = {
+          width: sampleW,
+          height: sampleH,
+          data: state.particleColorCtx.getImageData(0, 0, sampleW, sampleH).data
+        };
+      } catch (err) {
+        state.particleColorFrame = null;
+      }
+    }
+
+    function getParticleSceneColor(x, y, alpha) {
+      const frame = state.particleColorFrame;
+      if (!state.particleSceneColor || !frame) return null;
+
+      const sx = clamp(Math.floor((x / Math.max(1, state.width)) * frame.width), 0, frame.width - 1);
+      const sy = clamp(Math.floor((y / Math.max(1, state.height)) * frame.height), 0, frame.height - 1);
+      const idx = (sy * frame.width + sx) * 4;
+      const r = frame.data[idx];
+      const g = frame.data[idx + 1];
+      const b = frame.data[idx + 2];
+
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
     function drawParticles() {
       if (!state.particleMode || !state.particles) return;
       const p = state.particles;
+      const sizePreset = PARTICLE_SIZE[state.particleSize] || PARTICLE_SIZE.medium;
+      const sizeScale = sizePreset.scale || 1;
 
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
@@ -2181,13 +2328,16 @@
       for (let i = 0; i < p.limit; i++) {
         if (p.life[i] <= 0) continue;
         const alpha = clamp(p.life[i] / Math.max(1, p.maxLife[i]), 0, 1);
-        const size = p.size[i] * (0.65 + alpha * 0.95);
+        const size = p.size[i] * sizeScale * (0.65 + alpha * 0.95);
         const kind = Math.min(PARTICLE_KIND_COLORS.length - 1, p.kind[i]);
-        ctx.fillStyle = `${PARTICLE_KIND_COLORS[kind]}${0.16 + alpha * 0.72})`;
+        const sceneColor = getParticleSceneColor(p.x[i], p.y[i], 0.24 + alpha * 0.7);
+        ctx.fillStyle = sceneColor || `${PARTICLE_KIND_COLORS[kind]}${0.16 + alpha * 0.72})`;
         ctx.fillRect(p.x[i] - size * 0.5, p.y[i] - size * 0.5, size, size);
 
         if (!state.isMobile || state.profile === "quality") {
-          ctx.fillStyle = `${PARTICLE_KIND_COLORS[kind]}${0.05 + alpha * 0.2})`;
+          ctx.fillStyle = sceneColor
+            ? getParticleSceneColor(p.x[i], p.y[i], 0.06 + alpha * 0.18)
+            : `${PARTICLE_KIND_COLORS[kind]}${0.05 + alpha * 0.2})`;
           ctx.fillRect(p.x[i] - size, p.y[i] - size, size * 2, size * 2);
         }
       }
@@ -2445,6 +2595,267 @@
       ctx.restore();
     }
 
+    function getLandmarkDepth(landmarks, pointId) {
+      const point = landmarks && landmarks[pointId];
+      return point ? Number(point.z || 0) : 0;
+    }
+
+    function projectScanPoint(buffer, landmarks, pointId, bounds, handIndex, time) {
+      const x = buffer[pointId * 2];
+      const y = buffer[pointId * 2 + 1];
+      const rawZ = getLandmarkDepth(landmarks, pointId);
+      const span = Math.max(1, bounds.palmSpan);
+      const rx = (x - bounds.palmX) / span;
+      const ry = (y - bounds.palmY) / span;
+      const rz = clamp(-rawZ * 2.7, -1.15, 1.35);
+      const rotateY = Math.sin(time * 0.46 + handIndex * 0.9) * 0.34;
+      const rotateX = -0.42 + Math.cos(time * 0.33 + handIndex) * 0.08;
+      const cosY = Math.cos(rotateY);
+      const sinY = Math.sin(rotateY);
+      const cosX = Math.cos(rotateX);
+      const sinX = Math.sin(rotateX);
+      const x1 = rx * cosY + rz * sinY;
+      const z1 = -rx * sinY + rz * cosY;
+      const y1 = ry * cosX - z1 * sinX;
+      const z2 = ry * sinX + z1 * cosX;
+      const perspective = clamp(1 / (1 + z2 * 0.32), 0.72, 1.34);
+
+      return {
+        x: bounds.palmX + x1 * span * perspective,
+        y: bounds.palmY + y1 * span * perspective,
+        z: z2,
+        rawZ,
+        scale: perspective
+      };
+    }
+
+    function getDepthColor(depth, edge, alpha = 1) {
+      const d = clamp(depth, 0, 1);
+      let r = 0;
+      let g = 90 + d * 190;
+      let b = 255 - d * 210;
+
+      if (d > 0.62) {
+        r = (d - 0.62) * 520;
+        g = 255;
+        b = 40 + (1 - d) * 90;
+      }
+
+      if (edge > 0.22) {
+        r = Math.max(r, 230 * edge);
+        g = Math.min(255, g + 40 * edge);
+      }
+
+      return `rgba(${Math.floor(clamp(r, 0, 255))}, ${Math.floor(clamp(g, 0, 255))}, ${Math.floor(clamp(b, 0, 255))}, ${alpha})`;
+    }
+
+    function ensureDepthSample(width, height) {
+      const sample = state.depthSampleCanvas;
+      if (!sample || !state.depthSampleCtx) return null;
+
+      if (sample.width !== width || sample.height !== height) {
+        sample.width = width;
+        sample.height = height;
+        state.depthSampleCtx = sample.getContext("2d", { alpha: false, willReadFrequently: true });
+      }
+
+      return sample;
+    }
+
+    function drawSceneDepthVisualization(scanMode) {
+      const sampleW = scanMode
+        ? (state.isMobile ? 180 : 280)
+        : (state.isMobile ? 190 : 340);
+      const sampleH = Math.max(1, Math.round(sampleW * state.height / Math.max(1, state.width)));
+      const sample = ensureDepthSample(sampleW, sampleH);
+      if (!sample || !state.depthSampleCtx) return;
+
+      const sctx = state.depthSampleCtx;
+      const time = performance.now() * 0.001;
+
+      sctx.imageSmoothingEnabled = true;
+      sctx.drawImage(ctx.canvas, 0, 0, state.width, state.height, 0, 0, sampleW, sampleH);
+
+      let frame;
+      try {
+        frame = sctx.getImageData(0, 0, sampleW, sampleH);
+      } catch (err) {
+        console.warn("[BABYTRACK] depth sampling failed:", err);
+        return;
+      }
+
+      const data = frame.data;
+      const step = scanMode
+        ? (state.isMobile ? 3 : 2)
+        : (state.isMobile ? 3 : 2);
+      const cx = state.width * 0.5;
+      const cy = state.height * 0.56;
+      const scaleX = state.width / sampleW;
+      const scaleY = state.height / sampleH;
+      const rowStride = sampleW * 4;
+      const points = [];
+
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.985)";
+      ctx.fillRect(0, 0, state.width, state.height);
+
+      for (let sy = 1; sy < sampleH - 1; sy += step) {
+        for (let sx = 1; sx < sampleW - 1; sx += step) {
+          const idx = (sy * sampleW + sx) * 4;
+          const r = data[idx];
+          const g = data[idx + 1];
+          const b = data[idx + 2];
+          const lum = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+          const rightIdx = idx + 4;
+          const downIdx = idx + rowStride;
+          const lumRight = (data[rightIdx] * 0.299 + data[rightIdx + 1] * 0.587 + data[rightIdx + 2] * 0.114) / 255;
+          const lumDown = (data[downIdx] * 0.299 + data[downIdx + 1] * 0.587 + data[downIdx + 2] * 0.114) / 255;
+          const edge = clamp(Math.abs(lum - lumRight) + Math.abs(lum - lumDown), 0, 1);
+
+          if (scanMode && edge < 0.025 && ((sx + sy) % (step * 2)) !== 0) continue;
+
+          const yNorm = sy / sampleH;
+          const xNorm = sx / sampleW;
+          const localContrast = clamp(edge * 2.4, 0, 1);
+          const liftedLum = clamp((lum - 0.05) / 0.82, 0, 1);
+          const depth = clamp((1 - liftedLum) * 0.68 + localContrast * 0.42 + (1 - yNorm) * 0.18, 0, 1);
+          const noise = Math.sin(sx * 12.989 + sy * 78.233 + time * 4.1) * 43758.5453;
+          const jitter = (noise - Math.floor(noise) - 0.5) * (scanMode ? 2.2 : 1.1);
+          const baseX = sx * scaleX;
+          const baseY = sy * scaleY;
+          let px = baseX;
+          let py = baseY;
+
+          if (scanMode) {
+            const fromCenterX = (baseX - cx) / Math.max(1, state.width);
+            const fromCenterY = (baseY - cy) / Math.max(1, state.height);
+            const parallax = (depth - 0.5) * Math.min(state.width, state.height);
+            px = baseX + fromCenterX * parallax * 0.08;
+            py = baseY + fromCenterY * parallax * 0.035 - depth * 16;
+          }
+
+          points.push({
+            x: px + jitter,
+            y: py - depth * (scanMode ? 4 : 8) + jitter * 0.45,
+            sourceX: baseX,
+            sourceY: baseY,
+            depth,
+            edge,
+            xNorm,
+            yNorm
+          });
+        }
+      }
+
+      ctx.globalCompositeOperation = "source-over";
+
+      if (!scanMode) {
+        const gridAlpha = state.isMobile ? 0.1 : 0.14;
+        ctx.lineWidth = 0.7;
+        for (let i = 0; i < points.length - 1; i++) {
+          const a = points[i];
+          const b = points[i + 1];
+          if (Math.abs(a.yNorm - b.yNorm) > 0.012 || Math.abs(a.depth - b.depth) > 0.22) continue;
+          ctx.strokeStyle = getDepthColor((a.depth + b.depth) * 0.5, Math.max(a.edge, b.edge), gridAlpha);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+
+      if (scanMode) {
+        ctx.globalCompositeOperation = "screen";
+        ctx.lineWidth = 0.55;
+        for (let i = 0; i < points.length - 1; i++) {
+          const a = points[i];
+          const b = points[i + 1];
+          if (Math.abs(a.yNorm - b.yNorm) > 0.015 || Math.abs(a.depth - b.depth) > 0.18) continue;
+          ctx.strokeStyle = getDepthColor((a.depth + b.depth) * 0.5, Math.max(a.edge, b.edge), 0.18);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+
+      ctx.globalCompositeOperation = "source-over";
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        const size = scanMode
+          ? Math.max(1.2, 1.5 + p.depth * 2.8 + p.edge * 3.2)
+          : Math.max(2.2, Math.min(scaleX, scaleY) * 0.92 + p.depth * 2.3 + p.edge * 4.8);
+        const alpha = clamp(scanMode ? 0.5 + p.depth * 0.36 + p.edge * 0.28 : 0.78 + p.edge * 0.22, 0.5, 1);
+
+        ctx.fillStyle = getDepthColor(p.depth, p.edge, alpha);
+        ctx.fillRect(p.x, p.y, size, size);
+
+        if (!scanMode && p.edge > 0.12) {
+          ctx.fillStyle = getDepthColor(p.depth, p.edge, 0.28);
+          ctx.fillRect(p.x - size * 0.8, p.y - size * 0.8, size * 2.2, size * 2.2);
+        }
+      }
+
+      const label = scanMode ? "ALIGNED 3D POINT CLOUD" : "PIXEL ART DEPTH MAP";
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(72, 72, 72, 0.86)";
+      ctx.fillRect(0, 0, state.width, Math.max(24, state.height * 0.04));
+      ctx.fillRect(0, state.height - Math.max(26, state.height * 0.048), state.width, Math.max(26, state.height * 0.048));
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "700 11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(label, state.width * 0.5, 17);
+      ctx.textAlign = "left";
+      ctx.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.fillText(`Time: ${Math.floor(performance.now())}  Resolution: ${sampleW}x${sampleH}  Points: ${points.length}`, 4, state.height - 9);
+
+      ctx.restore();
+    }
+
+    function drawDepthLayer(buffers, landmarksList) {
+      if (!state.depthLayer || state.scan3D) return;
+      drawSceneDepthVisualization(false);
+    }
+
+    function drawFaceScanPlanes(time) {
+      if (state.faceBoxes.length === 0) return;
+
+      for (let i = 0; i < state.faceBoxes.length; i++) {
+        const box = state.faceBoxes[i];
+        const x = mapNormalizedBoxX(box.x, box.w);
+        const y = mapNormalizedBoxY(box.y);
+        const w = mapNormalizedBoxW(box.w);
+        const h = mapNormalizedBoxH(box.h);
+        const skew = Math.sin(time * 0.8 + i) * Math.min(18, w * 0.08);
+
+        ctx.strokeStyle = "rgba(255, 204, 102, 0.34)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + skew, y);
+        ctx.lineTo(x + w + skew, y + h * 0.05);
+        ctx.lineTo(x + w - skew, y + h);
+        ctx.lineTo(x - skew, y + h * 0.95);
+        ctx.closePath();
+        ctx.stroke();
+
+        const slices = 5;
+        for (let s = 1; s < slices; s++) {
+          const py = y + (h * s) / slices;
+          ctx.strokeStyle = `rgba(255, 204, 102, ${0.1 + s * 0.025})`;
+          ctx.beginPath();
+          ctx.moveTo(x - skew * 0.4, py);
+          ctx.lineTo(x + w + skew * 0.4, py + Math.sin(time * 2 + s) * 3);
+          ctx.stroke();
+        }
+      }
+    }
+
+    function draw3DScanVisualization(buffers, landmarksList) {
+      if (!state.scan3D) return;
+      drawSceneDepthVisualization(true);
+    }
+
     function drawHandStyle(buffer, handIndex) {
       switch (state.currentStyle) {
         case "grid_point":
@@ -2532,6 +2943,7 @@
       resizeCanvas();
       updatePerfHUD(results);
       drawCameraFrame(results.image);
+      captureParticleColorFrame();
       drawFaceMosaicLayer();
 
       const landmarksList = results.multiHandLandmarks || [];
@@ -2546,6 +2958,9 @@
         gestureList.push(gesture);
       }
 
+      const activeLandmarks = landmarksList.slice(0, buffers.length);
+      drawDepthLayer(buffers, activeLandmarks);
+      draw3DScanVisualization(buffers, activeLandmarks);
       drawDigitalWireField(buffers);
 
       for (let h = 0; h < buffers.length; h++) {

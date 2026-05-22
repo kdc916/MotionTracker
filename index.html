@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#08090d" />
-  <title>BABYTRACK Pro v2.2 - Camera Mirror Fixed</title>
+  <title>BABYTRACK Pro v2.3 - Particle Gesture Mode</title>
 
   <!-- MediaPipe runtime -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -746,6 +746,18 @@
 
       <section class="section">
         <div class="section-head">
+          <div class="section-title">파티클 제스처</div>
+          <div class="section-tip">Fist / Open / Finger</div>
+        </div>
+        <div class="grid">
+          <button class="btn amber" id="btn_particle_mode" type="button">Particle Mode</button>
+          <button class="btn amber" id="btn_particle_density" type="button">Particles M</button>
+        </div>
+        <div class="status-line"><span>현재 제스처</span><strong id="gesture_status">IDLE</strong></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
           <div class="section-title">성능 프로필</div>
           <div class="section-tip">Mobile Safe</div>
         </div>
@@ -807,6 +819,14 @@
           <span class="hud-label">FACE</span>
           <span class="hud-value" id="face_val">0</span>
         </div>
+        <div class="hud-item">
+          <span class="hud-label">GESTURE</span>
+          <span class="hud-value" id="gesture_val">IDLE</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">PRTL</span>
+          <span class="hud-value" id="particle_val">0</span>
+        </div>
       </div>
 
       <div class="caption">
@@ -820,7 +840,7 @@
           <h1>BABYTRACK Pro</h1>
           <p>
             카메라 권한을 허용하면 MediaPipe Hands 기반 실시간 트래킹이 시작됩니다.
-            Face Mosaic 필터를 켜면 얼굴 영역만 자동 픽셀화됩니다.
+            Face Mosaic은 얼굴만 보호하고, Particle Mode는 손 모양으로 입자를 제어합니다.
           </p>
           <button class="primary-btn" id="btn_start" type="button">카메라 시작</button>
           <div class="secondary-row">
@@ -872,6 +892,11 @@
       btnDimBg: document.getElementById("btn_dim_bg"),
       btnFaceMosaic: document.getElementById("btn_face_mosaic"),
       btnMosaicSize: document.getElementById("btn_mosaic_size"),
+      btnParticleMode: document.getElementById("btn_particle_mode"),
+      btnParticleDensity: document.getElementById("btn_particle_density"),
+      gestureStatus: document.getElementById("gesture_status"),
+      gestureVal: document.getElementById("gesture_val"),
+      particleVal: document.getElementById("particle_val"),
       btnMaxHands: document.getElementById("btn_max_hands"),
       btnMirror: document.getElementById("btn_mirror"),
       scanlineOverlay: document.getElementById("scanline_overlay")
@@ -899,6 +924,19 @@
       large: { label: "Pixel L", block: 20, padding: 0.32 }
     };
     const MOSAIC_ORDER = ["small", "medium", "large"];
+    const PARTICLE_DENSITY = {
+      small: { label: "Particles S", scale: 0.62 },
+      medium: { label: "Particles M", scale: 1 },
+      large: { label: "Particles L", scale: 1.38 }
+    };
+    const PARTICLE_ORDER = ["small", "medium", "large"];
+    const PARTICLE_KIND_COLORS = [
+      "rgba(0,255,204,",
+      "rgba(255,204,102,",
+      "rgba(255,45,114,",
+      "rgba(102,217,255,",
+      "rgba(255,255,255,"
+    ];
 
     const PROFILES = {
       quality: {
@@ -909,6 +947,8 @@
         canvasScaleDesktop: 1,
         canvasScaleMobile: 0.86,
         maxTrail: 18,
+        particleMax: 360,
+        particleEmit: 1.15,
         drawAllPoints: true,
         skipLabelsOnMobile: false
       },
@@ -921,6 +961,8 @@
         canvasScaleDesktop: 0.92,
         canvasScaleMobile: 0.7,
         maxTrail: 12,
+        particleMax: 240,
+        particleEmit: 0.82,
         drawAllPoints: true,
         skipLabelsOnMobile: true
       },
@@ -933,6 +975,8 @@
         canvasScaleDesktop: 0.72,
         canvasScaleMobile: 0.55,
         maxTrail: 7,
+        particleMax: 150,
+        particleEmit: 0.55,
         drawAllPoints: false,
         skipLabelsOnMobile: true
       }
@@ -959,6 +1003,11 @@
       dimBg: false,
       faceMosaic: false,
       mosaicSize: "medium",
+      particleMode: false,
+      particleDensity: "medium",
+      gestureLabel: "IDLE",
+      lastOpenBurstAt: 0,
+      lastGestureAt: ["IDLE", "IDLE"],
       mirror: false,
       maxHands: 2,
       isStarted: false,
@@ -983,6 +1032,9 @@
       faceBoxes: [],
       mosaicCanvas: document.createElement("canvas"),
       mosaicCtx: null,
+      particleCursor: 0,
+      particleAlive: 0,
+      particles: null,
       trails: [[], []],
       coords: [new Float32Array(42), new Float32Array(42)],
       reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -1025,6 +1077,7 @@
       });
 
       resizeCanvas();
+      if (state.particleMode) ensureParticlePool(true);
     }
 
     function setProfile(profileName) {
@@ -1135,6 +1188,31 @@
         state.mosaicSize = MOSAIC_ORDER[(index + 1) % MOSAIC_ORDER.length];
         DOM.btnMosaicSize.textContent = MOSAIC_PRESETS[state.mosaicSize].label;
         DOM.btnMosaicSize.classList.toggle("active", state.mosaicSize !== "medium");
+      });
+
+      DOM.btnParticleMode.addEventListener("click", () => {
+        state.particleMode = !state.particleMode;
+        DOM.btnParticleMode.classList.toggle("active", state.particleMode);
+        DOM.btnParticleMode.textContent = state.particleMode ? "Particles ON" : "Particle Mode";
+        if (state.particleMode) {
+          ensureParticlePool();
+          DOM.captionKicker.textContent = "2-1 / PARTICLE GESTURE";
+          DOM.captionMain.textContent = "주먹은 흡수, 펼침은 폭발, 손가락은 입자 컨트롤";
+          DOM.captionSub.textContent = "고정 파티클 풀 · 제스처 분기 · 모바일 저부하 렌더링";
+        } else {
+          state.gestureLabel = "IDLE";
+          DOM.gestureStatus.textContent = "IDLE";
+          DOM.gestureVal.textContent = "IDLE";
+          updateCaption();
+        }
+      });
+
+      DOM.btnParticleDensity.addEventListener("click", () => {
+        const index = PARTICLE_ORDER.indexOf(state.particleDensity);
+        state.particleDensity = PARTICLE_ORDER[(index + 1) % PARTICLE_ORDER.length];
+        DOM.btnParticleDensity.textContent = PARTICLE_DENSITY[state.particleDensity].label;
+        DOM.btnParticleDensity.classList.toggle("active", state.particleDensity !== "medium");
+        ensureParticlePool(true);
       });
 
       DOM.btnMaxHands.addEventListener("click", async () => {
@@ -1620,6 +1698,320 @@
       ctx.restore();
     }
 
+    function getParticleLimit() {
+      const profile = getActiveProfile();
+      const density = PARTICLE_DENSITY[state.particleDensity] || PARTICLE_DENSITY.medium;
+      return Math.max(80, Math.floor((profile.particleMax || 220) * density.scale));
+    }
+
+    function ensureParticlePool(forceResize = false) {
+      const limit = getParticleLimit();
+      if (state.particles && state.particles.limit === limit && !forceResize) return state.particles;
+
+      state.particles = {
+        limit,
+        x: new Float32Array(limit),
+        y: new Float32Array(limit),
+        vx: new Float32Array(limit),
+        vy: new Float32Array(limit),
+        life: new Float32Array(limit),
+        maxLife: new Float32Array(limit),
+        size: new Float32Array(limit),
+        kind: new Uint8Array(limit)
+      };
+      state.particleCursor = 0;
+      state.particleAlive = 0;
+      if (DOM.particleVal) DOM.particleVal.textContent = "0";
+      return state.particles;
+    }
+
+    function distance2D(ax, ay, bx, by) {
+      const dx = ax - bx;
+      const dy = ay - by;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function spawnParticle(x, y, vx, vy, life, size, kind = 0) {
+      if (!state.particleMode) return;
+      const p = ensureParticlePool();
+      const i = state.particleCursor;
+      p.x[i] = x;
+      p.y[i] = y;
+      p.vx[i] = vx;
+      p.vy[i] = vy;
+      p.life[i] = life;
+      p.maxLife[i] = life;
+      p.size[i] = size;
+      p.kind[i] = kind;
+      state.particleCursor = (i + 1) % p.limit;
+    }
+
+    function emitBurst(cx, cy, count, power, kind = 1) {
+      const profile = getActiveProfile();
+      const emitScale = profile.particleEmit || 1;
+      const finalCount = Math.max(1, Math.floor(count * emitScale));
+
+      for (let i = 0; i < finalCount; i++) {
+        const angle = (Math.PI * 2 * i) / finalCount + Math.random() * 0.42;
+        const speed = power * (0.42 + Math.random() * 0.78);
+        const life = 28 + Math.random() * 34;
+        spawnParticle(
+          cx + Math.cos(angle) * (4 + Math.random() * 18),
+          cy + Math.sin(angle) * (4 + Math.random() * 18),
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed,
+          life,
+          1.6 + Math.random() * 3.4,
+          kind
+        );
+      }
+    }
+
+    function emitVortexSeeds(cx, cy, radius, count, kind = 0) {
+      const profile = getActiveProfile();
+      const finalCount = Math.max(1, Math.floor(count * (profile.particleEmit || 1)));
+
+      for (let i = 0; i < finalCount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = radius * (0.35 + Math.random() * 0.8);
+        spawnParticle(
+          cx + Math.cos(angle) * r,
+          cy + Math.sin(angle) * r,
+          -Math.cos(angle) * (0.6 + Math.random() * 1.4),
+          -Math.sin(angle) * (0.6 + Math.random() * 1.4),
+          24 + Math.random() * 32,
+          1.5 + Math.random() * 2.6,
+          kind
+        );
+      }
+    }
+
+    function analyzeGesture(buffer, landmarks) {
+      const palmIds = [0, 5, 9, 13, 17];
+      let palmX = 0;
+      let palmY = 0;
+      for (let i = 0; i < palmIds.length; i++) {
+        const idx = palmIds[i] * 2;
+        palmX += buffer[idx];
+        palmY += buffer[idx + 1];
+      }
+      palmX /= palmIds.length;
+      palmY /= palmIds.length;
+
+      const wristX = buffer[0];
+      const wristY = buffer[1];
+      const palmSpan = Math.max(22, distance2D(buffer[5 * 2], buffer[5 * 2 + 1], buffer[17 * 2], buffer[17 * 2 + 1]));
+      const fingerDefs = [
+        { tip: 4, pip: 3, mcp: 2 },
+        { tip: 8, pip: 6, mcp: 5 },
+        { tip: 12, pip: 10, mcp: 9 },
+        { tip: 16, pip: 14, mcp: 13 },
+        { tip: 20, pip: 18, mcp: 17 }
+      ];
+
+      const extended = [];
+      let score = 0;
+      for (let i = 0; i < fingerDefs.length; i++) {
+        const f = fingerDefs[i];
+        const tx = buffer[f.tip * 2];
+        const ty = buffer[f.tip * 2 + 1];
+        const px = buffer[f.pip * 2];
+        const py = buffer[f.pip * 2 + 1];
+        const mx = buffer[f.mcp * 2];
+        const my = buffer[f.mcp * 2 + 1];
+        const tipPalm = distance2D(tx, ty, palmX, palmY);
+        const pipPalm = distance2D(px, py, palmX, palmY);
+        const mcpPalm = distance2D(mx, my, palmX, palmY);
+        const isExtended = i === 0
+          ? tipPalm > Math.max(pipPalm * 1.08, palmSpan * 0.62)
+          : tipPalm > Math.max(pipPalm * 1.16, mcpPalm + palmSpan * 0.22);
+        extended.push(isExtended);
+        if (isExtended) score++;
+      }
+
+      const thumbTip = { x: buffer[4 * 2], y: buffer[4 * 2 + 1] };
+      const indexTip = { x: buffer[8 * 2], y: buffer[8 * 2 + 1] };
+      const middleTip = { x: buffer[12 * 2], y: buffer[12 * 2 + 1] };
+      const pinchDistance = distance2D(thumbTip.x, thumbTip.y, indexTip.x, indexTip.y);
+      const pinch = pinchDistance < palmSpan * 0.42;
+      const fistTight = score <= 1 && distance2D(indexTip.x, indexTip.y, palmX, palmY) < palmSpan * 1.02;
+
+      let name = "IDLE";
+      if (fistTight) name = "FIST";
+      else if (pinch && score <= 3) name = "PINCH";
+      else if (score >= 4) name = "OPEN";
+      else if (extended[1] && extended[2] && !extended[3] && !extended[4]) name = "PEACE";
+      else if (extended[1] && !extended[2] && !extended[3] && !extended[4]) name = "POINT";
+      else if (extended[1] && !extended[2] && !extended[3] && extended[4]) name = "ROCK";
+      else if (score >= 2) name = "WAVE";
+
+      return {
+        name,
+        extended,
+        score,
+        palmX,
+        palmY,
+        wristX,
+        wristY,
+        palmSpan,
+        thumbTip,
+        indexTip,
+        middleTip,
+        pinchMidX: (thumbTip.x + indexTip.x) * 0.5,
+        pinchMidY: (thumbTip.y + indexTip.y) * 0.5,
+        indexDirX: indexTip.x - buffer[5 * 2],
+        indexDirY: indexTip.y - buffer[5 * 2 + 1]
+      };
+    }
+
+    function applyGestureEmitters(gesture, handIndex) {
+      const now = performance.now();
+      const previous = state.lastGestureAt[handIndex] || "IDLE";
+      const radius = Math.max(28, gesture.palmSpan * 1.25);
+
+      if (gesture.name === "FIST") {
+        emitVortexSeeds(gesture.palmX, gesture.palmY, radius, 4, 0);
+      } else if (gesture.name === "OPEN") {
+        if (previous !== "OPEN" || now - state.lastOpenBurstAt > 520) {
+          emitBurst(gesture.palmX, gesture.palmY, 42, Math.max(4.2, gesture.palmSpan * 0.038), 1);
+          state.lastOpenBurstAt = now;
+        }
+      } else if (gesture.name === "PINCH") {
+        emitVortexSeeds(gesture.pinchMidX, gesture.pinchMidY, gesture.palmSpan * 0.55, 3, 3);
+      } else if (gesture.name === "POINT") {
+        const len = Math.max(1, Math.sqrt(gesture.indexDirX * gesture.indexDirX + gesture.indexDirY * gesture.indexDirY));
+        const dx = gesture.indexDirX / len;
+        const dy = gesture.indexDirY / len;
+        for (let i = 0; i < Math.max(1, Math.floor((getActiveProfile().particleEmit || 1) * 3)); i++) {
+          spawnParticle(
+            gesture.indexTip.x,
+            gesture.indexTip.y,
+            dx * (4.2 + Math.random() * 3.6) + (Math.random() - 0.5) * 1.2,
+            dy * (4.2 + Math.random() * 3.6) + (Math.random() - 0.5) * 1.2,
+            20 + Math.random() * 24,
+            1.6 + Math.random() * 2.3,
+            4
+          );
+        }
+      } else if (gesture.name === "PEACE") {
+        emitVortexSeeds(gesture.indexTip.x, gesture.indexTip.y, gesture.palmSpan * 0.25, 2, 2);
+        emitVortexSeeds(gesture.middleTip.x, gesture.middleTip.y, gesture.palmSpan * 0.25, 2, 3);
+      } else if (gesture.name === "ROCK" || gesture.name === "WAVE") {
+        emitBurst(gesture.palmX, gesture.palmY, gesture.name === "ROCK" ? 12 : 7, gesture.name === "ROCK" ? 3.3 : 2.1, gesture.name === "ROCK" ? 2 : 0);
+      }
+
+      state.lastGestureAt[handIndex] = gesture.name;
+    }
+
+    function updateParticleForces(gestures) {
+      const p = ensureParticlePool();
+      state.particleAlive = 0;
+
+      for (let i = 0; i < p.limit; i++) {
+        if (p.life[i] <= 0) continue;
+
+        for (let h = 0; h < gestures.length; h++) {
+          const g = gestures[h];
+          const dx = g.palmX - p.x[i];
+          const dy = g.palmY - p.y[i];
+          const dist = Math.max(18, Math.sqrt(dx * dx + dy * dy));
+
+          if (g.name === "FIST") {
+            const pull = Math.min(0.095, 2.6 / dist);
+            p.vx[i] += dx * pull;
+            p.vy[i] += dy * pull;
+            p.vx[i] += (-dy / dist) * 0.38;
+            p.vy[i] += (dx / dist) * 0.38;
+            if (dist < g.palmSpan * 0.38) p.life[i] -= 2.2;
+          } else if (g.name === "OPEN") {
+            const push = Math.min(0.075, 2.2 / dist);
+            p.vx[i] -= dx * push;
+            p.vy[i] -= dy * push;
+          } else if (g.name === "PINCH") {
+            const pdx = g.pinchMidX - p.x[i];
+            const pdy = g.pinchMidY - p.y[i];
+            const pd = Math.max(16, Math.sqrt(pdx * pdx + pdy * pdy));
+            p.vx[i] += pdx * Math.min(0.052, 1.2 / pd) + (-pdy / pd) * 0.22;
+            p.vy[i] += pdy * Math.min(0.052, 1.2 / pd) + (pdx / pd) * 0.22;
+          } else if (g.name === "POINT") {
+            const len = Math.max(1, Math.sqrt(g.indexDirX * g.indexDirX + g.indexDirY * g.indexDirY));
+            p.vx[i] += (g.indexDirX / len) * 0.035;
+            p.vy[i] += (g.indexDirY / len) * 0.035;
+          }
+        }
+
+        p.vx[i] *= 0.982;
+        p.vy[i] *= 0.982;
+        p.x[i] += p.vx[i];
+        p.y[i] += p.vy[i];
+        p.life[i] -= 1;
+
+        if (p.x[i] < -40 || p.x[i] > state.width + 40 || p.y[i] < -40 || p.y[i] > state.height + 40) {
+          p.life[i] = 0;
+        }
+
+        if (p.life[i] > 0) state.particleAlive++;
+      }
+    }
+
+    function drawParticles() {
+      if (!state.particleMode || !state.particles) return;
+      const p = state.particles;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+
+      for (let i = 0; i < p.limit; i++) {
+        if (p.life[i] <= 0) continue;
+        const alpha = clamp(p.life[i] / Math.max(1, p.maxLife[i]), 0, 1);
+        const size = p.size[i] * (0.65 + alpha * 0.95);
+        const kind = Math.min(PARTICLE_KIND_COLORS.length - 1, p.kind[i]);
+        ctx.fillStyle = `${PARTICLE_KIND_COLORS[kind]}${0.16 + alpha * 0.72})`;
+        ctx.fillRect(p.x[i] - size * 0.5, p.y[i] - size * 0.5, size, size);
+
+        if (!state.isMobile || state.profile === "quality") {
+          ctx.fillStyle = `${PARTICLE_KIND_COLORS[kind]}${0.05 + alpha * 0.2})`;
+          ctx.fillRect(p.x[i] - size, p.y[i] - size, size * 2, size * 2);
+        }
+      }
+
+      ctx.restore();
+      if (DOM.particleVal) DOM.particleVal.textContent = String(state.particleAlive);
+    }
+
+    function updateParticleSystem(gestureList) {
+      if (!state.particleMode) return;
+      ensureParticlePool();
+
+      if (gestureList.length === 0) {
+        state.gestureLabel = "IDLE";
+        updateParticleForces([]);
+        drawParticles();
+        DOM.gestureStatus.textContent = "IDLE";
+        DOM.gestureVal.textContent = "IDLE";
+        return;
+      }
+
+      let label = gestureList[0].name;
+      for (let i = 0; i < gestureList.length; i++) {
+        if (gestureList[i].name !== "IDLE") {
+          label = gestureList[i].name;
+          break;
+        }
+      }
+
+      state.gestureLabel = label;
+      DOM.gestureStatus.textContent = label;
+      DOM.gestureVal.textContent = label;
+
+      for (let i = 0; i < gestureList.length; i++) {
+        applyGestureEmitters(gestureList[i], i);
+      }
+
+      updateParticleForces(gestureList);
+      drawParticles();
+    }
+
     function drawHandStyle(buffer, handIndex) {
       switch (state.currentStyle) {
         case "grid_point":
@@ -1712,10 +2104,15 @@
       const landmarksList = results.multiHandLandmarks || [];
       state.detectedHands = landmarksList.length;
 
+      const gestureList = [];
       for (let h = 0; h < Math.min(landmarksList.length, state.maxHands); h++) {
         const buffer = fillCoordBuffer(h, landmarksList[h]);
+        const gesture = analyzeGesture(buffer, landmarksList[h]);
+        gestureList.push(gesture);
         drawHandStyle(buffer, h);
       }
+
+      updateParticleSystem(gestureList);
 
       if (landmarksList.length === 0 && state.currentStyle === "comet_trail") {
         decayAndDrawTrails(0);

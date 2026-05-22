@@ -1,501 +1,1895 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Motion Tracker - BABYTRACK Optimized</title>
-    
-    <!-- MediaPipe 고속 웹 런타임 라이브러리 -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#08090d" />
+  <title>BABYTRACK Pro v2.2 - Camera Mirror Fixed</title>
 
-    <style>
-        :root {
-            --bg-color: #0b0b0d;
-            --panel-color: #141419;
-            --accent-color: #00ffcc;
-            --accent-pink: #ff0055;
-            --text-main: #ffffff;
-            --text-sub: #7e7e86;
-        }
+  <!-- MediaPipe runtime -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
 
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: var(--bg-color);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            color: var(--text-main);
-            overflow: hidden;
-            display: flex;
-            height: 100vh;
-            user-select: none;
-        }
+  <style>
+    :root {
+      --bg: #08090d;
+      --bg-2: #020306;
+      --panel: rgba(19, 20, 27, 0.92);
+      --panel-solid: #14161e;
+      --panel-2: #1b1e29;
+      --line: rgba(255, 255, 255, 0.095);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --mint: #00ffcc;
+      --mint-soft: rgba(0, 255, 204, 0.12);
+      --pink: #ff2d72;
+      --amber: #ffcc66;
+      --blue: #66d9ff;
+      --text: #ffffff;
+      --text-2: #a5a8b6;
+      --text-3: #6f7384;
+      --danger: #ff4d6d;
+      --ok: #00ffcc;
+      --radius: 18px;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
 
-        /* 메인 컨테이너 */
-        .container {
-            display: flex;
-            width: 100%;
-            height: 100%;
-        }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
-        /* 제어 패널 (사이드바) */
-        .sidebar {
-            width: 300px;
-            background-color: var(--panel-color);
-            border-right: 1px solid #23232a;
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-            box-sizing: border-box;
-            z-index: 10;
-            flex-shrink: 0;
-        }
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
 
-        .brand {
-            font-size: 20px;
-            font-weight: 900;
-            letter-spacing: 1.5px;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+    body {
+      min-height: 100dvh;
+    }
 
-        .brand span {
-            color: var(--accent-color);
-        }
+    button,
+    select,
+    input {
+      font-family: inherit;
+    }
 
-        .panel-section {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+    .app {
+      position: relative;
+      display: grid;
+      grid-template-columns: 318px 1fr;
+      width: 100vw;
+      height: 100dvh;
+      background:
+        radial-gradient(circle at 80% 18%, rgba(0, 255, 204, 0.12), transparent 30%),
+        radial-gradient(circle at 10% 90%, rgba(255, 45, 114, 0.1), transparent 28%),
+        var(--bg);
+      overflow: hidden;
+    }
 
-        .panel-title {
-            font-size: 11px;
-            font-weight: 700;
-            color: var(--text-sub);
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-        }
+    .sidebar {
+      position: relative;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      height: 100%;
+      padding: 22px;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
 
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-        }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 42px;
+    }
 
-        .btn {
-            background-color: #1e1e24;
-            border: 1px solid #2d2d37;
-            color: #d1d1d6;
-            padding: 10px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 600;
-            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
 
-        .btn:hover {
-            border-color: var(--accent-color);
-            color: #fff;
-            background-color: rgba(0, 255, 204, 0.05);
-        }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      color: #001a15;
+      font-weight: 950;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--mint), #79ffe8);
+      box-shadow: 0 0 22px rgba(0, 255, 204, 0.22);
+    }
 
-        .btn.active {
-            background-color: var(--accent-color);
-            color: #000;
-            border-color: var(--accent-color);
-            font-weight: 700;
-        }
+    .brand-title {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.05;
+    }
 
-        .btn.pink-active.active {
-            background-color: var(--accent-pink);
-            border-color: var(--accent-pink);
-            color: #fff;
-        }
+    .brand-title strong {
+      font-size: 18px;
+      letter-spacing: 0.6px;
+      font-weight: 950;
+    }
 
-        /* 프리뷰 영역 */
-        .display-area {
-            flex: 1;
-            position: relative;
-            background-color: #020202;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-        }
+    .brand-title span {
+      margin-top: 4px;
+      color: var(--text-3);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
 
-        #webcam {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1);
-            display: none; /* 오직 캔버스 렌더링에만 사용 */
-        }
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--text-2);
+      background: rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
 
-        #output_canvas {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            will-change: transform; /* 브라우저 GPU 렌더링 가속화 활성 */
-        }
+    .icon-btn:hover {
+      border-color: var(--mint);
+      color: var(--text);
+      background: rgba(0, 255, 204, 0.07);
+    }
 
-        /* 탑 네비게이션 워터마크 */
-        .top-link {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(11, 11, 13, 0.7);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            padding: 8px 18px;
-            border-radius: 30px;
-            font-size: 13px;
-            letter-spacing: 0.5px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            z-index: 5;
-        }
+    .icon-btn:active {
+      transform: scale(0.96);
+    }
 
-        /* 고성능 실시간 성능 인디케이터 */
-        .perf-hud {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-family: monospace;
-            font-size: 11px;
-            color: var(--accent-color);
-            z-index: 5;
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.035);
+    }
 
-        /* 하단 오버레이 가이드 및 자막 */
-        .bottom-caption {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            text-align: center;
-            width: 85%;
-            pointer-events: none;
-            z-index: 5;
-        }
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
 
-        .caption-sub {
-            color: var(--accent-color);
-            font-size: 14px;
-            font-weight: 800;
-            letter-spacing: 3px;
-            margin-bottom: 6px;
-            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
-        }
+    .section-title {
+      color: var(--text-2);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+    }
 
-        .caption-main {
-            font-size: 22px;
-            font-weight: 800;
-            text-shadow: 0 2px 8px rgba(0,0,0,0.9);
-            letter-spacing: -0.5px;
-        }
+    .section-tip {
+      color: var(--text-3);
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
 
-        /* 모바일 대응 극대화 (반응형 최적화) */
-        @media (max-width: 768px) {
-            body {
-                flex-direction: column-reverse;
-            }
-            .sidebar {
-                width: 100%;
-                height: 180px;
-                padding: 16px;
-                gap: 16px;
-                overflow-y: auto;
-            }
-            .top-link {
-                top: 15px;
-                font-size: 11px;
-                padding: 6px 12px;
-            }
-            .perf-hud {
-                top: 15px;
-                right: 15px;
-                padding: 4px 8px;
-            }
-            .bottom-caption {
-                bottom: 25px;
-            }
-            .caption-main {
-                font-size: 15px;
-            }
-        }
-    </style>
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .btn {
+      min-height: 38px;
+      border: 1px solid rgba(255, 255, 255, 0.095);
+      border-radius: 12px;
+      color: #d5d8e5;
+      background: rgba(255, 255, 255, 0.045);
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+      transition:
+        transform 0.12s ease,
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+    }
+
+    .btn:hover {
+      border-color: rgba(0, 255, 204, 0.72);
+      color: #fff;
+      background: rgba(0, 255, 204, 0.07);
+    }
+
+    .btn:active {
+      transform: translateY(1px) scale(0.99);
+    }
+
+    .btn.active {
+      color: #001714;
+      border-color: var(--mint);
+      background: var(--mint);
+      box-shadow: 0 0 20px rgba(0, 255, 204, 0.16);
+    }
+
+    .btn.pink.active {
+      color: #fff;
+      border-color: var(--pink);
+      background: var(--pink);
+      box-shadow: 0 0 20px rgba(255, 45, 114, 0.2);
+    }
+
+    .btn.blue.active {
+      color: #001018;
+      border-color: var(--blue);
+      background: var(--blue);
+      box-shadow: 0 0 20px rgba(102, 217, 255, 0.18);
+    }
+
+    .btn.amber.active {
+      color: #171000;
+      border-color: var(--amber);
+      background: var(--amber);
+      box-shadow: 0 0 20px rgba(255, 204, 102, 0.2);
+    }
+
+    .status-card {
+      display: grid;
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--text-3);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .status-line strong {
+      color: var(--mint);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    .display {
+      position: relative;
+      min-width: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-2);
+    }
+
+    #webcam {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      /* 실제 픽셀 기준은 항상 원본 방향으로 유지합니다.
+         미러는 output canvas에서만 처리해서 Face Mosaic / Hand 좌표가 어긋나지 않게 합니다. */
+      transform: none;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #output_canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      contain: strict;
+      will-change: transform, opacity;
+      transform: translateZ(0);
+    }
+
+    .vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.3), transparent 18%, transparent 70%, rgba(0, 0, 0, 0.52)),
+        radial-gradient(circle at center, transparent 56%, rgba(0, 0, 0, 0.44));
+      z-index: 3;
+    }
+
+    .scanline-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 4;
+      opacity: 0.12;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.0) 0px,
+        rgba(255, 255, 255, 0.0) 5px,
+        rgba(0, 255, 204, 0.28) 6px
+      );
+      mix-blend-mode: screen;
+    }
+
+    .top-pill {
+      position: absolute;
+      z-index: 8;
+      top: max(16px, env(safe-area-inset-top, 0px));
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: min(680px, calc(100% - 32px));
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(8, 9, 13, 0.68);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: #e9ecf5;
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.28);
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.5);
+    }
+
+    .live-dot.on {
+      background: var(--ok);
+      box-shadow: 0 0 0 6px rgba(0, 255, 204, 0.08), 0 0 18px rgba(0, 255, 204, 0.46);
+    }
+
+    .hud {
+      position: absolute;
+      z-index: 8;
+      top: max(16px, env(safe-area-inset-top, 0px));
+      right: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.56);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.28);
+    }
+
+    .hud-item {
+      display: grid;
+      gap: 2px;
+      min-width: 54px;
+      padding: 6px 8px;
+      border-radius: 11px;
+      background: rgba(255, 255, 255, 0.055);
+    }
+
+    .hud-label {
+      color: var(--text-3);
+      font-weight: 900;
+      letter-spacing: 0.8px;
+    }
+
+    .hud-value {
+      color: #fff;
+      font-weight: 950;
+      letter-spacing: 0.2px;
+    }
+
+    .caption {
+      position: absolute;
+      left: 50%;
+      bottom: calc(34px + var(--safe-bottom));
+      transform: translateX(-50%);
+      z-index: 8;
+      width: min(760px, calc(100% - 40px));
+      text-align: center;
+      pointer-events: none;
+      text-shadow: 0 5px 24px rgba(0, 0, 0, 0.85);
+    }
+
+    .caption-kicker {
+      color: var(--mint);
+      margin-bottom: 7px;
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    .caption-main {
+      color: #fff;
+      font-size: clamp(18px, 3vw, 32px);
+      font-weight: 950;
+      letter-spacing: -0.85px;
+      line-height: 1.15;
+    }
+
+    .caption-sub {
+      margin-top: 8px;
+      color: rgba(255, 255, 255, 0.62);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .center-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 15;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .center-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .start-card {
+      width: min(430px, 100%);
+      padding: 22px;
+      border: 1px solid var(--line-strong);
+      border-radius: 26px;
+      background: rgba(15, 17, 24, 0.78);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+      box-shadow: var(--shadow);
+      text-align: center;
+      pointer-events: auto;
+    }
+
+    .start-card h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      letter-spacing: -0.8px;
+    }
+
+    .start-card p {
+      margin: 0 0 18px;
+      color: var(--text-2);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .primary-btn {
+      width: 100%;
+      min-height: 48px;
+      border: 0;
+      border-radius: 16px;
+      color: #001714;
+      background: linear-gradient(135deg, var(--mint), #77ffe8);
+      font-size: 14px;
+      font-weight: 950;
+      cursor: pointer;
+      box-shadow: 0 16px 38px rgba(0, 255, 204, 0.18);
+    }
+
+    .primary-btn:active {
+      transform: translateY(1px) scale(0.99);
+    }
+
+    .secondary-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .ghost-btn {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--text-2);
+      background: rgba(255, 255, 255, 0.045);
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .mobile-drawer-toggle {
+      display: none;
+      position: absolute;
+      left: 16px;
+      bottom: calc(16px + var(--safe-bottom));
+      z-index: 24;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #fff;
+      background: rgba(13, 14, 20, 0.74);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      font-size: 12px;
+      font-weight: 950;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+    }
+
+    .drawer-backdrop {
+      display: none;
+    }
+
+    .mobile-only {
+      display: none;
+    }
+
+    @media (max-width: 900px) {
+      .app {
+        display: block;
+      }
+
+      .display {
+        width: 100%;
+        height: 100%;
+      }
+
+      .sidebar {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: calc(12px + var(--safe-bottom));
+        width: auto;
+        max-height: min(72dvh, 620px);
+        height: auto;
+        padding: 16px;
+        border: 1px solid var(--line-strong);
+        border-radius: 26px;
+        transform: translateY(calc(100% + 24px));
+        transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+
+      .app.drawer-open .sidebar {
+        transform: translateY(0);
+      }
+
+      .drawer-backdrop {
+        display: block;
+        position: absolute;
+        inset: 0;
+        z-index: 19;
+        background: rgba(0, 0, 0, 0.36);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+      }
+
+      .app.drawer-open .drawer-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .mobile-drawer-toggle {
+        display: flex;
+      }
+
+      .desktop-only {
+        display: none !important;
+      }
+
+      .mobile-only {
+        display: inline-grid;
+      }
+
+      .brand-row {
+        min-height: 36px;
+      }
+
+      .section {
+        padding: 12px;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hud {
+        top: max(58px, calc(env(safe-area-inset-top, 0px) + 58px));
+        right: 10px;
+        grid-template-columns: 1fr;
+      }
+
+      .hud-item {
+        min-width: 58px;
+        padding: 5px 7px;
+      }
+
+      .top-pill {
+        max-width: calc(100% - 24px);
+        font-size: 11px;
+        top: max(12px, env(safe-area-inset-top, 0px));
+        padding: 8px 12px;
+      }
+
+      .caption {
+        bottom: calc(78px + var(--safe-bottom));
+        width: calc(100% - 28px);
+      }
+
+      .caption-kicker {
+        font-size: 10px;
+        letter-spacing: 2px;
+      }
+
+      .caption-main {
+        font-size: 17px;
+      }
+
+      .caption-sub {
+        display: none;
+      }
+
+      .start-card {
+        padding: 18px;
+      }
+
+      .start-card h1 {
+        font-size: 22px;
+      }
+    }
+
+    @media (max-width: 390px) {
+      .grid,
+      .grid.three {
+        grid-template-columns: 1fr;
+      }
+
+      .secondary-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        transition: none !important;
+        animation: none !important;
+      }
+    }
+  </style>
 </head>
 <body>
+  <main class="app" id="app">
+    <div class="drawer-backdrop" id="drawer_backdrop"></div>
 
-    <div class="container">
-        <!-- 메인 인터페이스 컨트롤러 -->
-        <div class="sidebar">
-            <div class="brand">
-                BABY<span>TRACK</span>
-            </div>
-            
-            <div class="panel-section">
-                <div class="panel-title">트래커 렌더 스타일</div>
-                <div class="grid-container" id="style_selector">
-                    <button class="btn active" data-style="neon_wire">Neon Wire</button>
-                    <button class="btn" data-style="grid_point">Grid Point</button>
-                    <button class="btn" data-style="holo_label">Holo Label</button>
-                    <button class="btn" data-style="cyber_mesh">Cyber Mesh</button>
-                </div>
-            </div>
-            
-            <div class="panel-section">
-                <div class="panel-title">필터 레이어 (GPU 연산)</div>
-                <div class="grid-container">
-                    <button class="btn pink-active" id="btn_glitch">Glitch</button>
-                    <button class="btn pink-active" id="btn_xray">X-Ray</button>
-                </div>
-            </div>
-
-            <div class="panel-section" style="margin-top: auto;">
-                <div class="panel-title">하드웨어 상태</div>
-                <div style="font-size: 12px; color: var(--text-sub); display:flex; justify-content:space-between; margin-top:4px;">
-                    <span>AI 코어 엔진:</span>
-                    <span id="engine_status" style="color: var(--accent-color); font-weight: bold;">대기 중</span>
-                </div>
-            </div>
+    <aside class="sidebar" id="sidebar" aria-label="BABYTRACK control panel">
+      <div class="brand-row">
+        <div class="brand">
+          <div class="brand-mark">BT</div>
+          <div class="brand-title">
+            <strong>BABY<span style="color:var(--mint)">TRACK</span></strong>
+            <span>Pro Mobile Engine</span>
+          </div>
         </div>
+        <button class="icon-btn mobile-only" id="btn_close_drawer" type="button" title="닫기">✕</button>
+      </div>
 
-        <!-- 디스플레이 가상 연산 영역 -->
-        <div class="display-area">
-            <div class="top-link">https://artkit.cc/baby-track</div>
-            
-            <!-- 실시간 오버레이 FPS 모니터 -->
-            <div class="perf-hud">
-                <div>FPS: <span id="fps_val" style="color: #fff; font-weight: bold;">--</span></div>
-                <div>LATENCY: <span id="latency_val" style="color: #fff; font-weight: bold;">--</span> ms</div>
-            </div>
-            
-            <video id="webcam" autoplay playsinline></video>
-            <canvas id="output_canvas"></canvas>
-
-            <div class="bottom-caption">
-                <div class="caption-sub">1-1 / BABYTRACK OPTIMIZED</div>
-                <div class="caption-main">하드웨어 가속을 통한 극저지연 실시간 트래킹 모드 가동</div>
-            </div>
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title">트래커 렌더 스타일</div>
+          <div class="section-tip">9 Styles</div>
         </div>
-    </div>
+        <div class="grid" id="style_selector">
+          <button class="btn active" type="button" data-style="neon_wire">Neon Wire</button>
+          <button class="btn" type="button" data-style="grid_point">Grid Point</button>
+          <button class="btn" type="button" data-style="holo_label">Holo Label</button>
+          <button class="btn" type="button" data-style="cyber_mesh">Cyber Mesh</button>
+          <button class="btn" type="button" data-style="comet_trail">Comet Trail</button>
+          <button class="btn" type="button" data-style="energy_rings">Energy Rings</button>
+          <button class="btn" type="button" data-style="scan_nodes">Scan Nodes</button>
+          <button class="btn" type="button" data-style="minimal_pro">Minimal Pro</button>
+          <button class="btn" type="button" data-style="ref_motion">Ref Motion</button>
+        </div>
+      </section>
 
-    <script>
-        const videoElement = document.getElementById('webcam');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d', { alpha: false }); // 알파 채널 불필요 시 비활성화로 렌더링 최적화
-        const engineStatus = document.getElementById('engine_status');
-        
-        // 성능 측정 변수들
-        let lastFrameTime = performance.now();
-        let frameCount = 0;
-        let fps = 0;
-        const fpsVal = document.getElementById('fps_val');
-        const latencyVal = document.getElementById('latency_val');
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title">필터 레이어</div>
+          <div class="section-tip">Canvas FX</div>
+        </div>
+        <div class="grid">
+          <button class="btn pink" id="btn_glitch" type="button">Glitch</button>
+          <button class="btn pink" id="btn_xray" type="button">X-Ray</button>
+          <button class="btn blue" id="btn_scanline" type="button">Scanline</button>
+          <button class="btn blue" id="btn_dim_bg" type="button">Dim BG</button>
+          <button class="btn amber" id="btn_face_mosaic" type="button">Face Mosaic</button>
+          <button class="btn amber" id="btn_mosaic_size" type="button">Pixel M</button>
+        </div>
+      </section>
 
-        // 상태 변수
-        let currentEffect = 'neon_wire';
-        let glitchActive = false;
-        let xrayActive = false;
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title">성능 프로필</div>
+          <div class="section-tip">Mobile Safe</div>
+        </div>
+        <div class="grid three" id="profile_selector">
+          <button class="btn" type="button" data-profile="quality">Quality</button>
+          <button class="btn active" type="button" data-profile="balanced">Balanced</button>
+          <button class="btn" type="button" data-profile="battery">Battery</button>
+        </div>
+      </section>
 
-        // UI 이벤트 바인딩
-        document.getElementById('style_selector').addEventListener('click', (e) => {
-            if (e.target.classList.contains('btn')) {
-                document.querySelectorAll('#style_selector .btn').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active');
-                currentEffect = e.target.getAttribute('data-style');
-            }
-        });
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title">추적 옵션</div>
+          <div class="section-tip">Stable</div>
+        </div>
+        <div class="grid">
+          <button class="btn active" id="btn_max_hands" type="button" data-hands="2">Hands 2</button>
+          <button class="btn" id="btn_mirror" type="button">Camera Mirror</button>
+        </div>
+      </section>
 
-        const btnGlitch = document.getElementById('btn_glitch');
-        btnGlitch.addEventListener('click', () => {
-            glitchActive = !glitchActive;
-            btnGlitch.classList.toggle('active', glitchActive);
-        });
+      <section class="section status-card">
+        <div class="section-head">
+          <div class="section-title">하드웨어 상태</div>
+          <div class="section-tip">Realtime</div>
+        </div>
+        <div class="status-line"><span>AI 코어 엔진</span><strong id="engine_status">대기 중</strong></div>
+        <div class="status-line"><span>입력 해상도</span><strong id="input_status">AUTO</strong></div>
+        <div class="status-line"><span>드로우 스케일</span><strong id="scale_status">1.00x</strong></div>
+      </section>
+    </aside>
 
-        const btnXray = document.getElementById('btn_xray');
-        btnXray.addEventListener('click', () => {
-            xrayActive = !xrayActive;
-            btnXray.classList.toggle('active', xrayActive);
-        });
+    <section class="display">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="output_canvas"></canvas>
 
-        // 반응형 풀스크린 캔버스 처리
-        function resizeCanvas() {
-            canvasElement.width = canvasElement.clientWidth;
-            canvasElement.height = canvasElement.clientHeight;
+      <div class="vignette"></div>
+      <div class="scanline-overlay" id="scanline_overlay"></div>
+
+      <div class="top-pill">
+        <span class="live-dot" id="live_dot"></span>
+        <span id="top_status">BABYTRACK PRO · CAMERA READY</span>
+      </div>
+
+      <div class="hud" aria-label="Performance HUD">
+        <div class="hud-item">
+          <span class="hud-label">FPS</span>
+          <span class="hud-value" id="fps_val">--</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">AI MS</span>
+          <span class="hud-value" id="latency_val">--</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">HANDS</span>
+          <span class="hud-value" id="hands_val">0</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">FACE</span>
+          <span class="hud-value" id="face_val">0</span>
+        </div>
+      </div>
+
+      <div class="caption">
+        <div class="caption-kicker" id="caption_kicker">1-1 / BABYTRACK PRO</div>
+        <div class="caption-main" id="caption_main">모바일 최적화 실시간 핸드 트래킹 모드</div>
+        <div class="caption-sub" id="caption_sub">프레임 스킵 · 캔버스 스케일링 · 저부하 이펙트 렌더링 적용</div>
+      </div>
+
+      <div class="center-overlay" id="center_overlay">
+        <div class="start-card">
+          <h1>BABYTRACK Pro</h1>
+          <p>
+            카메라 권한을 허용하면 MediaPipe Hands 기반 실시간 트래킹이 시작됩니다.
+            Face Mosaic 필터를 켜면 얼굴 영역만 자동 픽셀화됩니다.
+          </p>
+          <button class="primary-btn" id="btn_start" type="button">카메라 시작</button>
+          <div class="secondary-row">
+            <button class="ghost-btn" id="btn_demo_style" type="button">스타일 랜덤</button>
+            <button class="ghost-btn" id="btn_battery_quick" type="button">저전력 모드</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="mobile-drawer-toggle" id="btn_open_drawer" type="button">
+        <span>⚙</span>
+        <span>Controls</span>
+      </button>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    const DOM = {
+      app: document.getElementById("app"),
+      sidebar: document.getElementById("sidebar"),
+      drawerBackdrop: document.getElementById("drawer_backdrop"),
+      btnOpenDrawer: document.getElementById("btn_open_drawer"),
+      btnCloseDrawer: document.getElementById("btn_close_drawer"),
+      video: document.getElementById("webcam"),
+      canvas: document.getElementById("output_canvas"),
+      engineStatus: document.getElementById("engine_status"),
+      inputStatus: document.getElementById("input_status"),
+      scaleStatus: document.getElementById("scale_status"),
+      fpsVal: document.getElementById("fps_val"),
+      latencyVal: document.getElementById("latency_val"),
+      handsVal: document.getElementById("hands_val"),
+      faceVal: document.getElementById("face_val"),
+      topStatus: document.getElementById("top_status"),
+      liveDot: document.getElementById("live_dot"),
+      captionKicker: document.getElementById("caption_kicker"),
+      captionMain: document.getElementById("caption_main"),
+      captionSub: document.getElementById("caption_sub"),
+      centerOverlay: document.getElementById("center_overlay"),
+      btnStart: document.getElementById("btn_start"),
+      btnDemoStyle: document.getElementById("btn_demo_style"),
+      btnBatteryQuick: document.getElementById("btn_battery_quick"),
+      styleSelector: document.getElementById("style_selector"),
+      profileSelector: document.getElementById("profile_selector"),
+      btnGlitch: document.getElementById("btn_glitch"),
+      btnXray: document.getElementById("btn_xray"),
+      btnScanline: document.getElementById("btn_scanline"),
+      btnDimBg: document.getElementById("btn_dim_bg"),
+      btnFaceMosaic: document.getElementById("btn_face_mosaic"),
+      btnMosaicSize: document.getElementById("btn_mosaic_size"),
+      btnMaxHands: document.getElementById("btn_max_hands"),
+      btnMirror: document.getElementById("btn_mirror"),
+      scanlineOverlay: document.getElementById("scanline_overlay")
+    };
+
+    const ctx = DOM.canvas.getContext("2d", {
+      alpha: false,
+      desynchronized: true
+    });
+
+    const HAND_CONNECTIONS = [
+      [0, 1], [1, 2], [2, 3], [3, 4],
+      [5, 6], [6, 7], [7, 8],
+      [9, 10], [10, 11], [11, 12],
+      [13, 14], [14, 15], [15, 16],
+      [17, 18], [18, 19], [19, 20],
+      [0, 5], [5, 9], [9, 13], [13, 17], [0, 17]
+    ];
+
+    const KEY_POINTS = [4, 8, 12, 16, 20];
+    const ALL_POINTS = Array.from({ length: 21 }, (_, index) => index);
+    const MOSAIC_PRESETS = {
+      small: { label: "Pixel S", block: 8, padding: 0.18 },
+      medium: { label: "Pixel M", block: 13, padding: 0.24 },
+      large: { label: "Pixel L", block: 20, padding: 0.32 }
+    };
+    const MOSAIC_ORDER = ["small", "medium", "large"];
+
+    const PROFILES = {
+      quality: {
+        label: "Quality",
+        targetFPS: 60,
+        inputWidth: 720,
+        inputHeight: 540,
+        canvasScaleDesktop: 1,
+        canvasScaleMobile: 0.86,
+        maxTrail: 18,
+        drawAllPoints: true,
+        skipLabelsOnMobile: false
+      },
+      balanced: {
+        label: "Balanced",
+        targetFPS: 30,
+        faceFPS: 8,
+        inputWidth: 640,
+        inputHeight: 480,
+        canvasScaleDesktop: 0.92,
+        canvasScaleMobile: 0.7,
+        maxTrail: 12,
+        drawAllPoints: true,
+        skipLabelsOnMobile: true
+      },
+      battery: {
+        label: "Battery",
+        targetFPS: 24,
+        faceFPS: 5,
+        inputWidth: 480,
+        inputHeight: 360,
+        canvasScaleDesktop: 0.72,
+        canvasScaleMobile: 0.55,
+        maxTrail: 7,
+        drawAllPoints: false,
+        skipLabelsOnMobile: true
+      }
+    };
+
+    const STYLE_COPY = {
+      neon_wire: ["1-1 / NEON WIRE", "네온 와이어 핸드 트래킹", "발광 라인을 shadowBlur 없이 더블 패스로 구현"],
+      grid_point: ["1-2 / GRID POINT", "격자 포인트 기반 경량 추적", "주요 손가락 팁 중심의 저부하 마커"],
+      holo_label: ["1-3 / HOLO LABEL", "좌표 라벨이 붙는 홀로그램 모드", "데모/촬영용 데이터 오버레이"],
+      cyber_mesh: ["1-4 / CYBER MESH", "손바닥 면을 연결하는 사이버 메시", "와이어 + 반투명 폴리곤 조합"],
+      comet_trail: ["1-5 / COMET TRAIL", "손끝 궤적이 남는 코멧 트레일", "터치 없는 모션 드로잉 느낌"],
+      energy_rings: ["1-6 / ENERGY RINGS", "손끝 에너지 링 이펙트", "마디 팁 주변 펄스 원형 이펙트"],
+      scan_nodes: ["1-7 / SCAN NODES", "스캔 노드 분석 모드", "스캔라인 + 노드 박스 조합"],
+      minimal_pro: ["1-8 / MINIMAL PRO", "미니멀 프로덕션 트래커", "촬영용으로 깔끔한 최소 표시"],
+      ref_motion: ["1-9 / REF MOTION", "레퍼런스 영상형 자동 트래킹 마커", "흰 사각 마커 + 옐로우 궤도선 + 얇은 오브젝트 라인"]
+    };
+
+    const state = {
+      currentStyle: "neon_wire",
+      profile: "balanced",
+      glitch: false,
+      xray: false,
+      scanline: false,
+      dimBg: false,
+      faceMosaic: false,
+      mosaicSize: "medium",
+      mirror: false,
+      maxHands: 2,
+      isStarted: false,
+      isSending: false,
+      lastSendAt: 0,
+      lastSendStartedAt: 0,
+      lastFpsTick: performance.now(),
+      frameCount: 0,
+      fps: 0,
+      aiMs: 0,
+      detectedHands: 0,
+      detectedFaces: 0,
+      canvasScale: 1,
+      width: 0,
+      height: 0,
+      dpr: 1,
+      camera: null,
+      hands: null,
+      faceDetection: null,
+      faceSending: false,
+      lastFaceSendAt: 0,
+      faceBoxes: [],
+      mosaicCanvas: document.createElement("canvas"),
+      mosaicCtx: null,
+      trails: [[], []],
+      coords: [new Float32Array(42), new Float32Array(42)],
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      isMobile: window.matchMedia("(max-width: 900px), (pointer: coarse)").matches
+    };
+
+    state.mosaicCtx = state.mosaicCanvas.getContext("2d", { alpha: false });
+
+    function getActiveProfile() {
+      return PROFILES[state.profile] || PROFILES.balanced;
+    }
+
+    function setEngineStatus(text, color = "var(--mint)") {
+      DOM.engineStatus.textContent = text;
+      DOM.engineStatus.style.color = color;
+    }
+
+    function setTopStatus(text, live = false) {
+      DOM.topStatus.textContent = text;
+      DOM.liveDot.classList.toggle("on", live);
+    }
+
+    function updateCaption() {
+      const copy = STYLE_COPY[state.currentStyle] || STYLE_COPY.neon_wire;
+      DOM.captionKicker.textContent = copy[0];
+      DOM.captionMain.textContent = copy[1];
+      DOM.captionSub.textContent = copy[2];
+    }
+
+    function updateProfileUI() {
+      const profile = getActiveProfile();
+      const scale = state.isMobile ? profile.canvasScaleMobile : profile.canvasScaleDesktop;
+
+      state.canvasScale = Math.min(1, Math.max(0.45, scale));
+      DOM.inputStatus.textContent = `${profile.inputWidth}×${profile.inputHeight}`;
+      DOM.scaleStatus.textContent = `${state.canvasScale.toFixed(2)}x`;
+
+      DOM.profileSelector.querySelectorAll(".btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.profile === state.profile);
+      });
+
+      resizeCanvas();
+    }
+
+    function setProfile(profileName) {
+      if (!PROFILES[profileName]) return;
+      state.profile = profileName;
+      updateProfileUI();
+    }
+
+    function resizeCanvas() {
+      const rect = DOM.canvas.getBoundingClientRect();
+      const profile = getActiveProfile();
+
+      state.dpr = Math.min(window.devicePixelRatio || 1, state.isMobile ? 1.5 : 2);
+      state.width = Math.max(1, Math.floor(rect.width * state.dpr * state.canvasScale));
+      state.height = Math.max(1, Math.floor(rect.height * state.dpr * state.canvasScale));
+
+      if (DOM.canvas.width !== state.width || DOM.canvas.height !== state.height) {
+        DOM.canvas.width = state.width;
+        DOM.canvas.height = state.height;
+      }
+
+      DOM.inputStatus.textContent = `${profile.inputWidth}×${profile.inputHeight}`;
+    }
+
+    function toggleDrawer(open) {
+      DOM.app.classList.toggle("drawer-open", Boolean(open));
+    }
+
+    function setActiveButton(container, activeButton, dataKey, value) {
+      container.querySelectorAll(".btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset[dataKey] === value);
+      });
+    }
+
+    function selectStyle(styleName) {
+      if (!STYLE_COPY[styleName]) return;
+      state.currentStyle = styleName;
+      setActiveButton(DOM.styleSelector, null, "style", styleName);
+      updateCaption();
+
+      if (state.isMobile) {
+        toggleDrawer(false);
+      }
+    }
+
+    function randomStyle() {
+      const styles = Object.keys(STYLE_COPY);
+      const next = styles[Math.floor(Math.random() * styles.length)];
+      selectStyle(next);
+    }
+
+    function setupUI() {
+      DOM.btnOpenDrawer.addEventListener("click", () => toggleDrawer(true));
+      DOM.btnCloseDrawer.addEventListener("click", () => toggleDrawer(false));
+      DOM.drawerBackdrop.addEventListener("click", () => toggleDrawer(false));
+
+      DOM.styleSelector.addEventListener("click", (event) => {
+        const btn = event.target.closest(".btn[data-style]");
+        if (!btn) return;
+        selectStyle(btn.dataset.style);
+      });
+
+      DOM.profileSelector.addEventListener("click", (event) => {
+        const btn = event.target.closest(".btn[data-profile]");
+        if (!btn) return;
+        setProfile(btn.dataset.profile);
+      });
+
+      DOM.btnGlitch.addEventListener("click", () => {
+        state.glitch = !state.glitch;
+        DOM.btnGlitch.classList.toggle("active", state.glitch);
+      });
+
+      DOM.btnXray.addEventListener("click", () => {
+        state.xray = !state.xray;
+        DOM.btnXray.classList.toggle("active", state.xray);
+      });
+
+      DOM.btnScanline.addEventListener("click", () => {
+        state.scanline = !state.scanline;
+        DOM.btnScanline.classList.toggle("active", state.scanline);
+        DOM.scanlineOverlay.style.display = state.scanline ? "block" : "none";
+      });
+
+      DOM.btnDimBg.addEventListener("click", () => {
+        state.dimBg = !state.dimBg;
+        DOM.btnDimBg.classList.toggle("active", state.dimBg);
+      });
+
+      DOM.btnFaceMosaic.addEventListener("click", async () => {
+        state.faceMosaic = !state.faceMosaic;
+        DOM.btnFaceMosaic.classList.toggle("active", state.faceMosaic);
+
+        if (!state.faceMosaic) {
+          state.faceBoxes = [];
+          state.detectedFaces = 0;
+          DOM.faceVal.textContent = "0";
+          return;
         }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
 
-        // 렌더링 속도 개선을 위한 손가락 연동 정보 상수화
-        const handConnections = [
-            [0, 1], [1, 2], [2, 3], [3, 4],
-            [5, 6], [6, 7], [7, 8],
-            [9, 10], [10, 11], [11, 12],
-            [13, 14], [14, 15], [15, 16],
-            [17, 18], [18, 19], [19, 20],
-            [0, 5], [5, 9], [9, 13], [13, 17], [0, 17]
-        ];
+        setEngineStatus("얼굴 보호 모듈 준비", "var(--amber)");
+        await ensureFaceDetection();
+        setEngineStatus(state.isStarted ? "가속 활성화됨" : "대기 중", state.isStarted ? "var(--mint)" : "var(--text-2)");
+      });
 
-        // 메인 프레임 단위 처리 콜백 함수
-        function onResults(results) {
+      DOM.btnMosaicSize.addEventListener("click", () => {
+        const index = MOSAIC_ORDER.indexOf(state.mosaicSize);
+        state.mosaicSize = MOSAIC_ORDER[(index + 1) % MOSAIC_ORDER.length];
+        DOM.btnMosaicSize.textContent = MOSAIC_PRESETS[state.mosaicSize].label;
+        DOM.btnMosaicSize.classList.toggle("active", state.mosaicSize !== "medium");
+      });
+
+      DOM.btnMaxHands.addEventListener("click", async () => {
+        state.maxHands = state.maxHands === 2 ? 1 : 2;
+        DOM.btnMaxHands.textContent = `Hands ${state.maxHands}`;
+        DOM.btnMaxHands.dataset.hands = String(state.maxHands);
+        DOM.btnMaxHands.classList.add("active");
+
+        if (state.hands) {
+          await state.hands.setOptions({ maxNumHands: state.maxHands });
+        }
+      });
+
+      DOM.btnMirror.addEventListener("click", () => {
+        state.mirror = !state.mirror;
+        DOM.btnMirror.classList.toggle("active", state.mirror);
+        DOM.btnMirror.textContent = state.mirror ? "Mirror ON" : "Camera Mirror";
+        // 좌표계는 MediaPipe 원본 좌표를 유지하고 canvas 표시 좌표만 전환합니다.
+        // 따라서 미러 전환 시 Face Mosaic과 손 트래킹이 서로 반대로 움직이지 않습니다.
+      });
+
+      DOM.btnStart.addEventListener("click", startTracker);
+      DOM.btnDemoStyle.addEventListener("click", randomStyle);
+      DOM.btnBatteryQuick.addEventListener("click", () => setProfile("battery"));
+
+      window.addEventListener("resize", () => {
+        state.isMobile = window.matchMedia("(max-width: 900px), (pointer: coarse)").matches;
+        updateProfileUI();
+      }, { passive: true });
+
+      window.addEventListener("orientationchange", () => {
+        setTimeout(() => {
+          state.isMobile = window.matchMedia("(max-width: 900px), (pointer: coarse)").matches;
+          updateProfileUI();
+        }, 250);
+      }, { passive: true });
+
+      DOM.btnMirror.classList.toggle("active", state.mirror);
+      DOM.btnMirror.textContent = state.mirror ? "Mirror ON" : "Camera Mirror";
+
+      DOM.scanlineOverlay.style.display = "none";
+      updateCaption();
+      updateProfileUI();
+    }
+
+    function drawCameraFrame(image) {
+      const w = state.width;
+      const h = state.height;
+
+      ctx.save();
+
+      if (state.mirror) {
+        ctx.translate(w, 0);
+        ctx.scale(-1, 1);
+      }
+
+      ctx.drawImage(image, 0, 0, w, h);
+      ctx.restore();
+
+      if (state.dimBg) {
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+      }
+
+      if (state.xray) {
+        ctx.save();
+        ctx.globalCompositeOperation = "difference";
+        ctx.fillStyle = "#04b9aa";
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+      }
+
+      if (state.glitch && !state.reducedMotion && Math.random() > 0.9) {
+        const sliceY = Math.random() * h;
+        const sliceHeight = 6 + Math.random() * 24;
+        const offset = (Math.random() - 0.5) * Math.min(44, w * 0.06);
+
+        ctx.save();
+        ctx.globalAlpha = 0.82;
+        ctx.drawImage(ctx.canvas, 0, sliceY, w, sliceHeight, offset, sliceY, w, sliceHeight);
+        ctx.restore();
+      }
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function readNormalizedFaceBox(detection) {
+      if (!detection) return null;
+
+      if (detection.boundingBox) {
+        const box = detection.boundingBox;
+        const width = Number(box.width || 0);
+        const height = Number(box.height || 0);
+        const xCenter = Number(box.xCenter ?? box.x_center ?? 0.5);
+        const yCenter = Number(box.yCenter ?? box.y_center ?? 0.5);
+        if (width > 0 && height > 0) {
+          return {
+            x: xCenter - width * 0.5,
+            y: yCenter - height * 0.5,
+            w: width,
+            h: height
+          };
+        }
+      }
+
+      const rel = detection.locationData && detection.locationData.relativeBoundingBox;
+      if (rel) {
+        const x = Number(rel.xMin ?? rel.xmin ?? rel.x ?? 0);
+        const y = Number(rel.yMin ?? rel.ymin ?? rel.y ?? 0);
+        const w = Number(rel.width || 0);
+        const h = Number(rel.height || 0);
+        if (w > 0 && h > 0) return { x, y, w, h };
+      }
+
+      return null;
+    }
+
+    function normalizeFaceBoxes(detections) {
+      const preset = MOSAIC_PRESETS[state.mosaicSize] || MOSAIC_PRESETS.medium;
+      const boxes = [];
+
+      for (let i = 0; i < detections.length; i++) {
+        const raw = readNormalizedFaceBox(detections[i]);
+        if (!raw) continue;
+
+        const padX = raw.w * preset.padding;
+        const padY = raw.h * preset.padding;
+        const x = clamp(raw.x - padX, 0, 1);
+        const y = clamp(raw.y - padY, 0, 1);
+        const right = clamp(raw.x + raw.w + padX, 0, 1);
+        const bottom = clamp(raw.y + raw.h + padY * 1.1, 0, 1);
+
+        const w = Math.max(0, right - x);
+        const h = Math.max(0, bottom - y);
+        if (w > 0.025 && h > 0.025) boxes.push({ x, y, w, h });
+      }
+
+      return boxes;
+    }
+
+    function mapNormalizedX(x) {
+      return (state.mirror ? 1 - x : x) * state.width;
+    }
+
+    function mapNormalizedBoxX(x, w) {
+      return (state.mirror ? 1 - x - w : x) * state.width;
+    }
+
+    function drawFaceMosaicLayer() {
+      if (!state.faceMosaic || state.faceBoxes.length === 0 || !state.mosaicCtx) return;
+
+      const preset = MOSAIC_PRESETS[state.mosaicSize] || MOSAIC_PRESETS.medium;
+      const block = Math.max(4, preset.block);
+      const scratch = state.mosaicCanvas;
+      const scratchCtx = state.mosaicCtx;
+
+      ctx.save();
+
+      for (let i = 0; i < state.faceBoxes.length; i++) {
+        const box = state.faceBoxes[i];
+        const rx = Math.floor(clamp(mapNormalizedBoxX(box.x, box.w), 0, state.width));
+        const ry = Math.floor(clamp(box.y, 0, 1) * state.height);
+        const rw = Math.floor(clamp(box.w, 0, 1) * state.width);
+        const rh = Math.floor(clamp(box.h, 0, 1) * state.height);
+
+        if (rw < 12 || rh < 12) continue;
+
+        const smallW = Math.max(1, Math.floor(rw / block));
+        const smallH = Math.max(1, Math.floor(rh / block));
+
+        if (scratch.width !== smallW || scratch.height !== smallH) {
+          scratch.width = smallW;
+          scratch.height = smallH;
+        }
+
+        scratchCtx.imageSmoothingEnabled = true;
+        scratchCtx.clearRect(0, 0, smallW, smallH);
+        scratchCtx.drawImage(ctx.canvas, rx, ry, rw, rh, 0, 0, smallW, smallH);
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(scratch, 0, 0, smallW, smallH, rx, ry, rw, rh);
+        ctx.imageSmoothingEnabled = true;
+
+        ctx.strokeStyle = "rgba(255, 204, 102, 0.82)";
+        ctx.lineWidth = Math.max(1, state.width * 0.0016);
+        ctx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.62)";
+        ctx.fillRect(rx, Math.max(0, ry - 20), Math.min(110, rw), 18);
+        ctx.fillStyle = "rgba(255, 204, 102, 0.95)";
+        ctx.font = "bold 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.fillText("FACE MASK", rx + 6, Math.max(12, ry - 7));
+      }
+
+      ctx.restore();
+    }
+
+    function getX(pt) {
+      return mapNormalizedX(pt.x);
+    }
+
+    function getY(pt) {
+      return pt.y * state.height;
+    }
+
+    function fillCoordBuffer(handIndex, landmarks) {
+      const buffer = state.coords[handIndex] || state.coords[0];
+
+      for (let i = 0; i < 21; i++) {
+        const point = landmarks[i];
+        buffer[i * 2] = getX(point);
+        buffer[i * 2 + 1] = getY(point);
+      }
+
+      return buffer;
+    }
+
+    function strokeConnections(buffer, outerColor, innerColor, outerWidth, innerWidth) {
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      ctx.beginPath();
+      for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
+        const a = HAND_CONNECTIONS[i][0] * 2;
+        const b = HAND_CONNECTIONS[i][1] * 2;
+        ctx.moveTo(buffer[a], buffer[a + 1]);
+        ctx.lineTo(buffer[b], buffer[b + 1]);
+      }
+
+      ctx.lineWidth = outerWidth;
+      ctx.strokeStyle = outerColor;
+      ctx.stroke();
+
+      ctx.lineWidth = innerWidth;
+      ctx.strokeStyle = innerColor;
+      ctx.stroke();
+    }
+
+    function drawTipDots(buffer, color = "#ffffff", radius = 3.2, points = KEY_POINTS) {
+      ctx.fillStyle = color;
+
+      for (let i = 0; i < points.length; i++) {
+        const idx = points[i] * 2;
+        ctx.beginPath();
+        ctx.arc(buffer[idx], buffer[idx + 1], radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawGridPoints(buffer, includeAllPoints) {
+      const points = includeAllPoints ? ALL_POINTS : KEY_POINTS;
+
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#ff2d72";
+      ctx.fillStyle = "#ffffff";
+
+      for (let i = 0; i < points.length; i++) {
+        const idx = points[i] * 2;
+        const x = buffer[idx];
+        const y = buffer[idx + 1];
+        const size = KEY_POINTS.includes(points[i]) ? 18 : 10;
+
+        ctx.strokeRect(x - size * 0.5, y - size * 0.5, size, size);
+        ctx.fillRect(x - 2, y - 2, 4, 4);
+      }
+    }
+
+    function drawHoloLabel(buffer, handIndex) {
+      drawGridPoints(buffer, false);
+
+      const profile = getActiveProfile();
+      if (state.isMobile && profile.skipLabelsOnMobile) return;
+
+      ctx.font = "800 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+      ctx.fillStyle = "rgba(0, 255, 204, 0.92)";
+      ctx.strokeStyle = "rgba(0, 255, 204, 0.45)";
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i < KEY_POINTS.length; i++) {
+        const pointId = KEY_POINTS[i];
+        const idx = pointId * 2;
+        const x = buffer[idx];
+        const y = buffer[idx + 1];
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 10, y - 4);
+        ctx.stroke();
+
+        ctx.fillText(`H${handIndex + 1}_NODE_${pointId}`, x + 14, y - 5);
+        ctx.fillText(`${x.toFixed(0)},${y.toFixed(0)}`, x + 14, y + 7);
+      }
+    }
+
+    function drawCyberMesh(buffer) {
+      strokeConnections(buffer, "rgba(0, 255, 204, 0.16)", "#00ffcc", 10, 2.5);
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.fillStyle = "rgba(0, 255, 204, 0.07)";
+      ctx.strokeStyle = "rgba(102, 217, 255, 0.26)";
+      ctx.lineWidth = 1;
+
+      const palm = [0, 5, 9, 13, 17];
+      ctx.beginPath();
+      ctx.moveTo(buffer[palm[0] * 2], buffer[palm[0] * 2 + 1]);
+      for (let i = 1; i < palm.length; i++) {
+        ctx.lineTo(buffer[palm[i] * 2], buffer[palm[i] * 2 + 1]);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      for (let i = 0; i < palm.length; i++) {
+        const a = palm[i] * 2;
+        for (let j = i + 1; j < palm.length; j++) {
+          const b = palm[j] * 2;
+          ctx.beginPath();
+          ctx.moveTo(buffer[a], buffer[a + 1]);
+          ctx.lineTo(buffer[b], buffer[b + 1]);
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+      drawTipDots(buffer, "#ffffff", 2.5, KEY_POINTS);
+    }
+
+    function addTrail(handIndex, buffer) {
+      const profile = getActiveProfile();
+      const trail = state.trails[handIndex] || [];
+
+      for (let i = 0; i < KEY_POINTS.length; i++) {
+        const idx = KEY_POINTS[i] * 2;
+        trail.push({
+          x: buffer[idx],
+          y: buffer[idx + 1],
+          life: profile.maxTrail
+        });
+      }
+
+      while (trail.length > profile.maxTrail * KEY_POINTS.length) {
+        trail.shift();
+      }
+
+      state.trails[handIndex] = trail;
+    }
+
+    function decayAndDrawTrails(handIndex) {
+      const trail = state.trails[handIndex] || [];
+      const next = [];
+
+      for (let i = 0; i < trail.length; i++) {
+        const t = trail[i];
+        const alpha = Math.max(0, t.life / getActiveProfile().maxTrail);
+
+        ctx.fillStyle = `rgba(0, 255, 204, ${alpha * 0.55})`;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, 2 + alpha * 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        t.life -= 1;
+        if (t.life > 0) next.push(t);
+      }
+
+      state.trails[handIndex] = next;
+    }
+
+    function drawCometTrail(buffer, handIndex) {
+      addTrail(handIndex, buffer);
+      decayAndDrawTrails(handIndex);
+      strokeConnections(buffer, "rgba(255, 255, 255, 0.12)", "rgba(0, 255, 204, 0.84)", 8, 2);
+      drawTipDots(buffer, "#00ffcc", 4.2, KEY_POINTS);
+    }
+
+    function drawEnergyRings(buffer) {
+      const t = performance.now() * 0.004;
+      strokeConnections(buffer, "rgba(0, 255, 204, 0.12)", "rgba(0, 255, 204, 0.78)", 9, 2);
+
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < KEY_POINTS.length; i++) {
+        const idx = KEY_POINTS[i] * 2;
+        const x = buffer[idx];
+        const y = buffer[idx + 1];
+        const pulse = Math.sin(t + i * 0.9) * 0.5 + 0.5;
+        const r1 = 12 + pulse * 10;
+        const r2 = 23 + pulse * 7;
+
+        ctx.strokeStyle = `rgba(0, 255, 204, ${0.44 - pulse * 0.16})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r1, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(255, 45, 114, ${0.28 + pulse * 0.12})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    function drawScanNodes(buffer) {
+      drawGridPoints(buffer, getActiveProfile().drawAllPoints);
+
+      const y = (performance.now() * 0.08) % state.height;
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.fillStyle = "rgba(0, 255, 204, 0.11)";
+      ctx.fillRect(0, y, state.width, 2);
+      ctx.fillStyle = "rgba(0, 255, 204, 0.035)";
+      ctx.fillRect(0, Math.max(0, y - 18), state.width, 36);
+      ctx.restore();
+
+      ctx.strokeStyle = "rgba(0, 255, 204, 0.48)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < KEY_POINTS.length; i++) {
+        const idx = KEY_POINTS[i] * 2;
+        ctx.beginPath();
+        ctx.moveTo(buffer[idx] - 16, buffer[idx + 1]);
+        ctx.lineTo(buffer[idx] + 16, buffer[idx + 1]);
+        ctx.moveTo(buffer[idx], buffer[idx + 1] - 16);
+        ctx.lineTo(buffer[idx], buffer[idx + 1] + 16);
+        ctx.stroke();
+      }
+    }
+
+    function drawMinimalPro(buffer) {
+      strokeConnections(buffer, "rgba(255, 255, 255, 0.18)", "rgba(255, 255, 255, 0.82)", 5, 1.6);
+      drawTipDots(buffer, "#00ffcc", 2.6, KEY_POINTS);
+    }
+
+    function drawRefMotion(buffer) {
+      const wristX = buffer[0];
+      const wristY = buffer[1];
+      const palmX = (buffer[0] + buffer[5 * 2] + buffer[9 * 2] + buffer[13 * 2] + buffer[17 * 2]) / 5;
+      const palmY = (buffer[1] + buffer[5 * 2 + 1] + buffer[9 * 2 + 1] + buffer[13 * 2 + 1] + buffer[17 * 2 + 1]) / 5;
+      const time = performance.now() * 0.001;
+
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      ctx.strokeStyle = "rgba(230, 255, 110, 0.48)";
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i < KEY_POINTS.length; i++) {
+        const idx = KEY_POINTS[i] * 2;
+        const x = buffer[idx];
+        const y = buffer[idx + 1];
+        const c1x = palmX + Math.sin(time + i) * 46;
+        const c1y = palmY - 52 + Math.cos(time * 0.7 + i) * 24;
+        const c2x = x + Math.cos(time + i * 0.4) * 32;
+        const c2y = y - 34;
+
+        ctx.beginPath();
+        ctx.moveTo(wristX, wristY);
+        ctx.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "rgba(255,255,255,0.68)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < ALL_POINTS.length; i++) {
+        const idx = ALL_POINTS[i] * 2;
+        const x = buffer[idx];
+        const y = buffer[idx + 1];
+        const size = KEY_POINTS.includes(i) ? 20 : 12;
+        ctx.strokeRect(x - size * 0.5, y - size * 0.5, size, size);
+      }
+
+      ctx.strokeStyle = "rgba(255,255,255,0.28)";
+      ctx.lineWidth = 0.8;
+      strokeConnections(buffer, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.54)", 4, 1);
+
+      ctx.strokeStyle = "rgba(230,255,110,0.58)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(palmX, palmY, 54, 28, time * 0.18, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawHandStyle(buffer, handIndex) {
+      switch (state.currentStyle) {
+        case "grid_point":
+          drawGridPoints(buffer, getActiveProfile().drawAllPoints);
+          break;
+        case "holo_label":
+          drawHoloLabel(buffer, handIndex);
+          break;
+        case "cyber_mesh":
+          drawCyberMesh(buffer);
+          break;
+        case "comet_trail":
+          drawCometTrail(buffer, handIndex);
+          break;
+        case "energy_rings":
+          drawEnergyRings(buffer);
+          break;
+        case "scan_nodes":
+          drawScanNodes(buffer);
+          break;
+        case "minimal_pro":
+          drawMinimalPro(buffer);
+          break;
+        case "ref_motion":
+          drawRefMotion(buffer);
+          break;
+        case "neon_wire":
+        default:
+          strokeConnections(buffer, "rgba(0, 255, 204, 0.22)", "#00ffcc", 11, 2.8);
+          drawTipDots(buffer, "#ffffff", 3, KEY_POINTS);
+          break;
+      }
+    }
+
+    function drawIdleFrame() {
+      resizeCanvas();
+
+      const w = state.width;
+      const h = state.height;
+
+      ctx.fillStyle = "#020306";
+      ctx.fillRect(0, 0, w, h);
+
+      const grid = Math.max(28, Math.floor(Math.min(w, h) / 18));
+      ctx.strokeStyle = "rgba(0, 255, 204, 0.075)";
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      for (let x = 0; x < w; x += grid) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+      }
+      for (let y = 0; y < h; y += grid) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255,255,255,0.72)";
+      ctx.font = `${Math.max(14, Math.floor(w / 48))}px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText("Camera standby", w * 0.5, h * 0.5);
+    }
+
+    function updatePerfHUD(results) {
+      const now = performance.now();
+      state.frameCount++;
+
+      if (now - state.lastFpsTick >= 500) {
+        state.fps = Math.round((state.frameCount * 1000) / (now - state.lastFpsTick));
+        state.frameCount = 0;
+        state.lastFpsTick = now;
+        DOM.fpsVal.textContent = String(state.fps);
+      }
+
+      state.aiMs = Math.max(0, now - state.lastSendStartedAt);
+      DOM.latencyVal.textContent = state.aiMs.toFixed(0);
+      DOM.handsVal.textContent = String(results.multiHandLandmarks ? results.multiHandLandmarks.length : 0);
+      DOM.faceVal.textContent = String(state.detectedFaces);
+    }
+
+    function onResults(results) {
+      state.isSending = false;
+
+      resizeCanvas();
+      updatePerfHUD(results);
+      drawCameraFrame(results.image);
+      drawFaceMosaicLayer();
+
+      const landmarksList = results.multiHandLandmarks || [];
+      state.detectedHands = landmarksList.length;
+
+      for (let h = 0; h < Math.min(landmarksList.length, state.maxHands); h++) {
+        const buffer = fillCoordBuffer(h, landmarksList[h]);
+        drawHandStyle(buffer, h);
+      }
+
+      if (landmarksList.length === 0 && state.currentStyle === "comet_trail") {
+        decayAndDrawTrails(0);
+        decayAndDrawTrails(1);
+      }
+    }
+
+    function onFaceResults(results) {
+      state.faceSending = false;
+      const detections = results && results.detections ? results.detections : [];
+      state.faceBoxes = normalizeFaceBoxes(detections);
+      state.detectedFaces = state.faceBoxes.length;
+      DOM.faceVal.textContent = String(state.detectedFaces);
+    }
+
+    async function createFaceDetection() {
+      if (!window.FaceDetection) {
+        throw new Error("MediaPipe Face Detection 라이브러리를 불러오지 못했습니다.");
+      }
+
+      const faceDetection = new FaceDetection({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
+      });
+
+      await faceDetection.setOptions({
+        model: "short",
+        minDetectionConfidence: 0.5
+      });
+
+      faceDetection.onResults(onFaceResults);
+      return faceDetection;
+    }
+
+    async function ensureFaceDetection() {
+      if (state.faceDetection) return state.faceDetection;
+
+      try {
+        state.faceDetection = await createFaceDetection();
+        return state.faceDetection;
+      } catch (err) {
+        console.warn("[BABYTRACK] face detection init failed:", err);
+        state.faceMosaic = false;
+        DOM.btnFaceMosaic.classList.remove("active");
+        setEngineStatus("얼굴 모듈 실패", "var(--danger)");
+        throw err;
+      }
+    }
+
+    function scheduleFaceDetection(now) {
+      if (!state.faceMosaic || !state.faceDetection || state.faceSending) return;
+
+      const profile = getActiveProfile();
+      const targetInterval = 1000 / Math.max(1, profile.faceFPS || 6);
+      if (now - state.lastFaceSendAt < targetInterval) return;
+
+      state.lastFaceSendAt = now;
+      state.faceSending = true;
+      state.faceDetection.send({ image: DOM.video }).catch((err) => {
+        state.faceSending = false;
+        console.warn("[BABYTRACK] faceDetection.send failed:", err);
+      });
+    }
+
+    async function createHands() {
+      if (!window.Hands) {
+        throw new Error("MediaPipe Hands 라이브러리를 불러오지 못했습니다.");
+      }
+
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      await hands.setOptions({
+        maxNumHands: state.maxHands,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+        selfieMode: false
+      });
+
+      hands.onResults(onResults);
+      return hands;
+    }
+
+    async function startTracker() {
+      if (state.isStarted) return;
+
+      try {
+        setEngineStatus("초기화 중", "var(--amber)");
+        setTopStatus("BABYTRACK PRO · INITIALIZING", false);
+
+        DOM.btnStart.disabled = true;
+        DOM.btnStart.textContent = "초기화 중...";
+
+        if (state.isMobile && state.profile === "quality") {
+          setProfile("balanced");
+        }
+
+        state.hands = await createHands();
+        if (state.faceMosaic) {
+          await ensureFaceDetection();
+        }
+
+        const profile = getActiveProfile();
+        if (!window.Camera) {
+          throw new Error("MediaPipe Camera Utils 라이브러리를 불러오지 못했습니다.");
+        }
+
+        state.camera = new Camera(DOM.video, {
+          width: profile.inputWidth,
+          height: profile.inputHeight,
+          onFrame: async () => {
+            if (!state.hands) return;
+
             const now = performance.now();
-            
-            // FPS 실시간 정밀 연산
-            frameCount++;
-            if (now - lastFrameTime >= 1000) {
-                fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
-                fpsVal.textContent = fps;
-                frameCount = 0;
-                lastFrameTime = now;
+            scheduleFaceDetection(now);
+
+            if (state.isSending) return;
+
+            const targetInterval = 1000 / getActiveProfile().targetFPS;
+            if (now - state.lastSendAt < targetInterval) return;
+
+            state.lastSendAt = now;
+            state.lastSendStartedAt = now;
+            state.isSending = true;
+
+            try {
+              await state.hands.send({ image: DOM.video });
+            } catch (err) {
+              state.isSending = false;
+              console.warn("[BABYTRACK] hands.send failed:", err);
             }
-
-            // 레이턴시(지연 속도) 시각화
-            latencyVal.textContent = (performance.now() - now).toFixed(1);
-
-            // 캔버스 드로잉 시작
-            canvasCtx.save();
-            
-            // 1. 카메라 프레임 복사 (좌우 반전 처리 포함)
-            canvasCtx.translate(canvasElement.width, 0);
-            canvasCtx.scale(-1, 1);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.restore();
-
-            // 2. X-Ray 컴포지트 필터 연산 (오직 하드웨어 가속 Composition 사용)
-            if (xrayActive) {
-                canvasCtx.save();
-                canvasCtx.globalCompositeOperation = 'difference';
-                canvasCtx.fillStyle = '#01a39d'; // 가시성 높은 일렉트릭 블루 계열
-                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-                canvasCtx.restore();
-            }
-
-            // 3. 초경량 글리치 연산 (캔버스 전체 파괴 방식 대신 부분 드로우 슬라이스 기법 사용)
-            if (glitchActive && Math.random() > 0.88) {
-                const sliceY = Math.random() * canvasElement.height;
-                const sliceHeight = 8 + Math.random() * 20;
-                canvasCtx.drawImage(
-                    canvasElement, 
-                    0, sliceY, canvasElement.width, sliceHeight, 
-                    (Math.random() - 0.5) * 30, sliceY, canvasElement.width, sliceHeight
-                );
-            }
-
-            // 4. 모션 트래킹 데이터 렌더링
-            if (results.multiHandLandmarks) {
-                const width = canvasElement.width;
-                const height = canvasElement.height;
-
-                for (let h = 0; h < results.multiHandLandmarks.length; h++) {
-                    const landmarks = results.multiHandLandmarks[h];
-
-                    // CPU 부하 방지를 위해 일회성 가상 객체 생성 대신 인덱스 루프로 직접 드로잉
-                    if (currentEffect === 'neon_wire' || currentEffect === 'cyber_mesh') {
-                        // [최적화 비결] shadowBlur 대신 더블 패스 스트로크(Double-pass stroke) 적용
-                        // 패스 1: 외부 흐릿한 발광(Glow) 효과를 넓은 반투명 라인으로 대체
-                        canvasCtx.lineWidth = 12;
-                        canvasCtx.strokeStyle = 'rgba(0, 255, 204, 0.22)';
-                        canvasCtx.lineCap = 'round';
-                        canvasCtx.lineJoin = 'round';
-                        
-                        canvasCtx.beginPath();
-                        for (let i = 0; i < handConnections.length; i++) {
-                            const p1 = landmarks[handConnections[i][0]];
-                            const p2 = landmarks[handConnections[i][1]];
-                            canvasCtx.moveTo((1 - p1.x) * width, p1.y * height);
-                            canvasCtx.lineTo((1 - p2.x) * width, p2.y * height);
-                        }
-                        canvasCtx.stroke();
-
-                        // 패스 2: 내부 핵심 고대비 하이라이트 코어 라인
-                        canvasCtx.lineWidth = 3;
-                        canvasCtx.strokeStyle = '#00ffcc';
-                        canvasCtx.stroke();
-                    }
-
-                    // 5. 포인트 추적 마커 렌더링 (주요 5대 마디 팁만 선별 추적하여 드로잉 최소화)
-                    const keyPoints = [4, 8, 12, 16, 20];
-                    for (let k = 0; k < keyPoints.length; k++) {
-                        const idx = keyPoints[k];
-                        const pt = landmarks[idx];
-                        const px = (1 - pt.x) * width;
-                        const py = pt.y * height;
-
-                        if (currentEffect === 'grid_point' || currentEffect === 'holo_label') {
-                            // 크기가 작고 선명한 박스 인디케이터 구성 (CPU 부담 0)
-                            canvasCtx.lineWidth = 1.5;
-                            canvasCtx.strokeStyle = '#ff0055';
-                            canvasCtx.strokeRect(px - 10, py - 10, 20, 20);
-                            
-                            canvasCtx.fillStyle = '#ffffff';
-                            canvasCtx.fillRect(px - 2, py - 2, 4, 4);
-                        }
-
-                        if (currentEffect === 'holo_label') {
-                            // 홀로그램 데이터 오버레이 매핑
-                            canvasCtx.fillStyle = 'rgba(0, 255, 204, 0.9)';
-                            canvasCtx.font = 'bold 9px monospace';
-                            canvasCtx.fillText(`NODE_0${idx}`, px + 14, py - 4);
-                            canvasCtx.fillText(`LOC: ${px.toFixed(0)},${py.toFixed(0)}`, px + 14, py + 6);
-                            
-                            canvasCtx.strokeStyle = 'rgba(0, 255, 204, 0.5)';
-                            canvasCtx.beginPath();
-                            canvasCtx.moveTo(px, py);
-                            canvasCtx.lineTo(px + 10, py - 4);
-                            canvasCtx.stroke();
-                        }
-                    }
-                }
-            }
-        }
-
-        // 6. 초경량 AI 미디어파이프 설정 (Lite 프로필 가동)
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+          }
         });
 
-        hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 0,         // [극강 핵심 최적화] Lite 모델 탑재로 모바일/저사양 기기 최적 대응
-            minDetectionConfidence: 0.45,
-            minTrackingConfidence: 0.45
-        });
-        hands.onResults(onResults);
+        await state.camera.start();
 
-        // 7. 가볍고 최적화된 프레임 피딩 설정
-        const camera = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({ image: videoElement });
-            },
-            width: 640,                 // [입력 해상도 다운사이징] 머신러닝 분석용 입력을 최적 저해상도로 매핑해 성능 극대화
-            height: 480
-        });
-        
-        camera.start()
-            .then(() => {
-                engineStatus.textContent = "가속 활성화됨";
-                engineStatus.style.color = "var(--accent-color)";
-            })
-            .catch(err => {
-                engineStatus.textContent = "액세스 차단됨";
-                engineStatus.style.color = "var(--accent-pink)";
-            });
-    </script>
+        state.isStarted = true;
+        DOM.centerOverlay.classList.add("hidden");
+        setEngineStatus("가속 활성화됨", "var(--mint)");
+        setTopStatus("BABYTRACK PRO · LIVE TRACKING", true);
+      } catch (err) {
+        console.error("[BABYTRACK] start failed:", err);
+        state.isStarted = false;
+        state.isSending = false;
+        DOM.btnStart.disabled = false;
+        DOM.btnStart.textContent = "다시 시작";
+        setEngineStatus("액세스 실패", "var(--danger)");
+        setTopStatus("CAMERA BLOCKED · 권한/HTTPS 확인", false);
+
+        const message = err && err.message ? err.message : "카메라를 시작할 수 없습니다.";
+        DOM.captionKicker.textContent = "ERROR / CAMERA ACCESS";
+        DOM.captionMain.textContent = "카메라 권한 또는 HTTPS 환경을 확인해 주세요.";
+        DOM.captionSub.textContent = message;
+      }
+    }
+
+    function boot() {
+      setupUI();
+      drawIdleFrame();
+      setTopStatus("BABYTRACK PRO · CAMERA READY", false);
+      setEngineStatus("대기 중", "var(--text-2)");
+
+      // 모바일 브라우저는 권한 팝업이 사용자 제스처에 더 안정적으로 반응하므로 자동 시작하지 않습니다.
+      if (!state.isMobile && location.protocol === "https:") {
+        // 데스크톱 HTTPS에서는 사용자가 원하면 시작 버튼을 누르지 않아도 자연스럽게 사용 가능하도록 짧은 대기 후 시도.
+        // 실패해도 시작 버튼 UX로 복구됩니다.
+        setTimeout(() => {
+          if (!state.isStarted) startTracker();
+        }, 450);
+      }
+    }
+
+    boot();
+  </script>
 </body>
 </html>

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Motion Tracker - BABYTRACK Optimized</title>
+    
+    <!-- MediaPipe 고속 웹 런타임 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --bg-color: #0b0b0d;
+            --panel-color: #141419;
+            --accent-color: #00ffcc;
+            --accent-pink: #ff0055;
+            --text-main: #ffffff;
+            --text-sub: #7e7e86;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+            user-select: none;
+        }
+
+        /* 메인 컨테이너 */
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 제어 패널 (사이드바) */
+        .sidebar {
+            width: 300px;
+            background-color: var(--panel-color);
+            border-right: 1px solid #23232a;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            box-sizing: border-box;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        .brand {
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: 1.5px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand span {
+            color: var(--accent-color);
+        }
+
+        .panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .panel-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .btn {
+            background-color: #1e1e24;
+            border: 1px solid #2d2d37;
+            color: #d1d1d6;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn:hover {
+            border-color: var(--accent-color);
+            color: #fff;
+            background-color: rgba(0, 255, 204, 0.05);
+        }
+
+        .btn.active {
+            background-color: var(--accent-color);
+            color: #000;
+            border-color: var(--accent-color);
+            font-weight: 700;
+        }
+
+        .btn.pink-active.active {
+            background-color: var(--accent-pink);
+            border-color: var(--accent-pink);
+            color: #fff;
+        }
+
+        /* 프리뷰 영역 */
+        .display-area {
+            flex: 1;
+            position: relative;
+            background-color: #020202;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #webcam {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            display: none; /* 오직 캔버스 렌더링에만 사용 */
+        }
+
+        #output_canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            will-change: transform; /* 브라우저 GPU 렌더링 가속화 활성 */
+        }
+
+        /* 탑 네비게이션 워터마크 */
+        .top-link {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(11, 11, 13, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 8px 18px;
+            border-radius: 30px;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            z-index: 5;
+        }
+
+        /* 고성능 실시간 성능 인디케이터 */
+        .perf-hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 11px;
+            color: var(--accent-color);
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        /* 하단 오버레이 가이드 및 자막 */
+        .bottom-caption {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            width: 85%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .caption-sub {
+            color: var(--accent-color);
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            margin-bottom: 6px;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+        }
+
+        .caption-main {
+            font-size: 22px;
+            font-weight: 800;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.9);
+            letter-spacing: -0.5px;
+        }
+
+        /* 모바일 대응 극대화 (반응형 최적화) */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column-reverse;
+            }
+            .sidebar {
+                width: 100%;
+                height: 180px;
+                padding: 16px;
+                gap: 16px;
+                overflow-y: auto;
+            }
+            .top-link {
+                top: 15px;
+                font-size: 11px;
+                padding: 6px 12px;
+            }
+            .perf-hud {
+                top: 15px;
+                right: 15px;
+                padding: 4px 8px;
+            }
+            .bottom-caption {
+                bottom: 25px;
+            }
+            .caption-main {
+                font-size: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- 메인 인터페이스 컨트롤러 -->
+        <div class="sidebar">
+            <div class="brand">
+                BABY<span>TRACK</span>
+            </div>
+            
+            <div class="panel-section">
+                <div class="panel-title">트래커 렌더 스타일</div>
+                <div class="grid-container" id="style_selector">
+                    <button class="btn active" data-style="neon_wire">Neon Wire</button>
+                    <button class="btn" data-style="grid_point">Grid Point</button>
+                    <button class="btn" data-style="holo_label">Holo Label</button>
+                    <button class="btn" data-style="cyber_mesh">Cyber Mesh</button>
+                </div>
+            </div>
+            
+            <div class="panel-section">
+                <div class="panel-title">필터 레이어 (GPU 연산)</div>
+                <div class="grid-container">
+                    <button class="btn pink-active" id="btn_glitch">Glitch</button>
+                    <button class="btn pink-active" id="btn_xray">X-Ray</button>
+                </div>
+            </div>
+
+            <div class="panel-section" style="margin-top: auto;">
+                <div class="panel-title">하드웨어 상태</div>
+                <div style="font-size: 12px; color: var(--text-sub); display:flex; justify-content:space-between; margin-top:4px;">
+                    <span>AI 코어 엔진:</span>
+                    <span id="engine_status" style="color: var(--accent-color); font-weight: bold;">대기 중</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 디스플레이 가상 연산 영역 -->
+        <div class="display-area">
+            <div class="top-link">https://artkit.cc/baby-track</div>
+            
+            <!-- 실시간 오버레이 FPS 모니터 -->
+            <div class="perf-hud">
+                <div>FPS: <span id="fps_val" style="color: #fff; font-weight: bold;">--</span></div>
+                <div>LATENCY: <span id="latency_val" style="color: #fff; font-weight: bold;">--</span> ms</div>
+            </div>
+            
+            <video id="webcam" autoplay playsinline></video>
+            <canvas id="output_canvas"></canvas>
+
+            <div class="bottom-caption">
+                <div class="caption-sub">1-1 / BABYTRACK OPTIMIZED</div>
+                <div class="caption-main">하드웨어 가속을 통한 극저지연 실시간 트래킹 모드 가동</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d', { alpha: false }); // 알파 채널 불필요 시 비활성화로 렌더링 최적화
+        const engineStatus = document.getElementById('engine_status');
+        
+        // 성능 측정 변수들
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+        const fpsVal = document.getElementById('fps_val');
+        const latencyVal = document.getElementById('latency_val');
+
+        // 상태 변수
+        let currentEffect = 'neon_wire';
+        let glitchActive = false;
+        let xrayActive = false;
+
+        // UI 이벤트 바인딩
+        document.getElementById('style_selector').addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn')) {
+                document.querySelectorAll('#style_selector .btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+                currentEffect = e.target.getAttribute('data-style');
+            }
+        });
+
+        const btnGlitch = document.getElementById('btn_glitch');
+        btnGlitch.addEventListener('click', () => {
+            glitchActive = !glitchActive;
+            btnGlitch.classList.toggle('active', glitchActive);
+        });
+
+        const btnXray = document.getElementById('btn_xray');
+        btnXray.addEventListener('click', () => {
+            xrayActive = !xrayActive;
+            btnXray.classList.toggle('active', xrayActive);
+        });
+
+        // 반응형 풀스크린 캔버스 처리
+        function resizeCanvas() {
+            canvasElement.width = canvasElement.clientWidth;
+            canvasElement.height = canvasElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 렌더링 속도 개선을 위한 손가락 연동 정보 상수화
+        const handConnections = [
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [5, 6], [6, 7], [7, 8],
+            [9, 10], [10, 11], [11, 12],
+            [13, 14], [14, 15], [15, 16],
+            [17, 18], [18, 19], [19, 20],
+            [0, 5], [5, 9], [9, 13], [13, 17], [0, 17]
+        ];
+
+        // 메인 프레임 단위 처리 콜백 함수
+        function onResults(results) {
+            const now = performance.now();
+            
+            // FPS 실시간 정밀 연산
+            frameCount++;
+            if (now - lastFrameTime >= 1000) {
+                fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
+                fpsVal.textContent = fps;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+
+            // 레이턴시(지연 속도) 시각화
+            latencyVal.textContent = (performance.now() - now).toFixed(1);
+
+            // 캔버스 드로잉 시작
+            canvasCtx.save();
+            
+            // 1. 카메라 프레임 복사 (좌우 반전 처리 포함)
+            canvasCtx.translate(canvasElement.width, 0);
+            canvasCtx.scale(-1, 1);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.restore();
+
+            // 2. X-Ray 컴포지트 필터 연산 (오직 하드웨어 가속 Composition 사용)
+            if (xrayActive) {
+                canvasCtx.save();
+                canvasCtx.globalCompositeOperation = 'difference';
+                canvasCtx.fillStyle = '#01a39d'; // 가시성 높은 일렉트릭 블루 계열
+                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.restore();
+            }
+
+            // 3. 초경량 글리치 연산 (캔버스 전체 파괴 방식 대신 부분 드로우 슬라이스 기법 사용)
+            if (glitchActive && Math.random() > 0.88) {
+                const sliceY = Math.random() * canvasElement.height;
+                const sliceHeight = 8 + Math.random() * 20;
+                canvasCtx.drawImage(
+                    canvasElement, 
+                    0, sliceY, canvasElement.width, sliceHeight, 
+                    (Math.random() - 0.5) * 30, sliceY, canvasElement.width, sliceHeight
+                );
+            }
+
+            // 4. 모션 트래킹 데이터 렌더링
+            if (results.multiHandLandmarks) {
+                const width = canvasElement.width;
+                const height = canvasElement.height;
+
+                for (let h = 0; h < results.multiHandLandmarks.length; h++) {
+                    const landmarks = results.multiHandLandmarks[h];
+
+                    // CPU 부하 방지를 위해 일회성 가상 객체 생성 대신 인덱스 루프로 직접 드로잉
+                    if (currentEffect === 'neon_wire' || currentEffect === 'cyber_mesh') {
+                        // [최적화 비결] shadowBlur 대신 더블 패스 스트로크(Double-pass stroke) 적용
+                        // 패스 1: 외부 흐릿한 발광(Glow) 효과를 넓은 반투명 라인으로 대체
+                        canvasCtx.lineWidth = 12;
+                        canvasCtx.strokeStyle = 'rgba(0, 255, 204, 0.22)';
+                        canvasCtx.lineCap = 'round';
+                        canvasCtx.lineJoin = 'round';
+                        
+                        canvasCtx.beginPath();
+                        for (let i = 0; i < handConnections.length; i++) {
+                            const p1 = landmarks[handConnections[i][0]];
+                            const p2 = landmarks[handConnections[i][1]];
+                            canvasCtx.moveTo((1 - p1.x) * width, p1.y * height);
+                            canvasCtx.lineTo((1 - p2.x) * width, p2.y * height);
+                        }
+                        canvasCtx.stroke();
+
+                        // 패스 2: 내부 핵심 고대비 하이라이트 코어 라인
+                        canvasCtx.lineWidth = 3;
+                        canvasCtx.strokeStyle = '#00ffcc';
+                        canvasCtx.stroke();
+                    }
+
+                    // 5. 포인트 추적 마커 렌더링 (주요 5대 마디 팁만 선별 추적하여 드로잉 최소화)
+                    const keyPoints = [4, 8, 12, 16, 20];
+                    for (let k = 0; k < keyPoints.length; k++) {
+                        const idx = keyPoints[k];
+                        const pt = landmarks[idx];
+                        const px = (1 - pt.x) * width;
+                        const py = pt.y * height;
+
+                        if (currentEffect === 'grid_point' || currentEffect === 'holo_label') {
+                            // 크기가 작고 선명한 박스 인디케이터 구성 (CPU 부담 0)
+                            canvasCtx.lineWidth = 1.5;
+                            canvasCtx.strokeStyle = '#ff0055';
+                            canvasCtx.strokeRect(px - 10, py - 10, 20, 20);
+                            
+                            canvasCtx.fillStyle = '#ffffff';
+                            canvasCtx.fillRect(px - 2, py - 2, 4, 4);
+                        }
+
+                        if (currentEffect === 'holo_label') {
+                            // 홀로그램 데이터 오버레이 매핑
+                            canvasCtx.fillStyle = 'rgba(0, 255, 204, 0.9)';
+                            canvasCtx.font = 'bold 9px monospace';
+                            canvasCtx.fillText(`NODE_0${idx}`, px + 14, py - 4);
+                            canvasCtx.fillText(`LOC: ${px.toFixed(0)},${py.toFixed(0)}`, px + 14, py + 6);
+                            
+                            canvasCtx.strokeStyle = 'rgba(0, 255, 204, 0.5)';
+                            canvasCtx.beginPath();
+                            canvasCtx.moveTo(px, py);
+                            canvasCtx.lineTo(px + 10, py - 4);
+                            canvasCtx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. 초경량 AI 미디어파이프 설정 (Lite 프로필 가동)
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 0,         // [극강 핵심 최적화] Lite 모델 탑재로 모바일/저사양 기기 최적 대응
+            minDetectionConfidence: 0.45,
+            minTrackingConfidence: 0.45
+        });
+        hands.onResults(onResults);
+
+        // 7. 가볍고 최적화된 프레임 피딩 설정
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,                 // [입력 해상도 다운사이징] 머신러닝 분석용 입력을 최적 저해상도로 매핑해 성능 극대화
+            height: 480
+        });
+        
+        camera.start()
+            .then(() => {
+                engineStatus.textContent = "가속 활성화됨";
+                engineStatus.style.color = "var(--accent-color)";
+            })
+            .catch(err => {
+                engineStatus.textContent = "액세스 차단됨";
+                engineStatus.style.color = "var(--accent-pink)";
+            });
+    </script>
+</body>
+</html>

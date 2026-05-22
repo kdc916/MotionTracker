@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#08090d" />
-  <title>BABYTRACK Pro v2.4 - Mirror + Loop Particles</title>
+  <title>BABYTRACK Pro v2.7 - Digital Wire Tracking</title>
 
   <!-- MediaPipe runtime -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -707,7 +707,7 @@
           <div class="brand-mark">BT</div>
           <div class="brand-title">
             <strong>BABY<span style="color:var(--mint)">TRACK</span></strong>
-            <span>Pro Mobile Engine v2.4</span>
+            <span>Pro Mobile Engine v2.7</span>
           </div>
         </div>
         <button class="icon-btn mobile-only" id="btn_close_drawer" type="button" title="닫기">✕</button>
@@ -748,6 +748,18 @@
 
       <section class="section">
         <div class="section-head">
+          <div class="section-title">디지털 와이어 필드</div>
+          <div class="section-tip">Tracking Mesh</div>
+        </div>
+        <div class="grid">
+          <button class="btn blue" id="btn_wire_field" type="button">Wire Field</button>
+          <button class="btn blue" id="btn_wire_intensity" type="button">Wire M</button>
+        </div>
+        <div class="status-line"><span>와이어 상태</span><strong id="wire_status">OFF</strong></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
           <div class="section-title">파티클 제스처</div>
           <div class="section-tip">Fist / Open / Finger</div>
         </div>
@@ -756,6 +768,7 @@
           <button class="btn amber" id="btn_particle_density" type="button">Particles M</button>
         </div>
         <div class="status-line"><span>현재 제스처</span><strong id="gesture_status">IDLE</strong></div>
+        <div class="status-line"><span>입자 상한</span><strong id="particle_limit_status">320</strong></div>
       </section>
 
       <section class="section">
@@ -842,7 +855,7 @@
           <h1>BABYTRACK Pro</h1>
           <p>
             카메라 권한을 허용하면 MediaPipe Hands 기반 실시간 트래킹이 시작됩니다.
-            Face Mosaic은 얼굴만 보호하고, Particle Mode는 손 모양으로 입자를 제어합니다.
+            Face Mosaic은 얼굴만 보호하고, Particle Mode는 손 모양으로 입자를 제어합니다. Wire Field는 트래킹된 손과 오브젝트 주변에 디지털 와이어 구조를 생성합니다.
           </p>
           <button class="primary-btn" id="btn_start" type="button">카메라 시작</button>
           <div class="secondary-row">
@@ -894,11 +907,15 @@
       btnDimBg: document.getElementById("btn_dim_bg"),
       btnFaceMosaic: document.getElementById("btn_face_mosaic"),
       btnMosaicSize: document.getElementById("btn_mosaic_size"),
+      btnWireField: document.getElementById("btn_wire_field"),
+      btnWireIntensity: document.getElementById("btn_wire_intensity"),
+      wireStatus: document.getElementById("wire_status"),
       btnParticleMode: document.getElementById("btn_particle_mode"),
       btnParticleDensity: document.getElementById("btn_particle_density"),
       gestureStatus: document.getElementById("gesture_status"),
       gestureVal: document.getElementById("gesture_val"),
       particleVal: document.getElementById("particle_val"),
+      particleLimitStatus: document.getElementById("particle_limit_status"),
       btnMaxHands: document.getElementById("btn_max_hands"),
       btnMirror: document.getElementById("btn_mirror"),
       scanlineOverlay: document.getElementById("scanline_overlay")
@@ -920,18 +937,28 @@
 
     const KEY_POINTS = [4, 8, 12, 16, 20];
     const ALL_POINTS = Array.from({ length: 21 }, (_, index) => index);
+    const PALM_CORE_POINTS = [0, 5, 9, 13, 17];
     const MOSAIC_PRESETS = {
       small: { label: "Pixel S", block: 8, padding: 0.18 },
       medium: { label: "Pixel M", block: 13, padding: 0.24 },
       large: { label: "Pixel L", block: 20, padding: 0.32 }
     };
     const MOSAIC_ORDER = ["small", "medium", "large"];
+    const WIRE_PRESETS = {
+      small: { label: "Wire S", reach: 0.82, jitter: 0.7, alpha: 0.64, strands: 1, anchors: 5 },
+      medium: { label: "Wire M", reach: 1, jitter: 1, alpha: 0.78, strands: 2, anchors: 8 },
+      large: { label: "Wire L", reach: 1.24, jitter: 1.35, alpha: 0.9, strands: 3, anchors: 12 }
+    };
+    const WIRE_ORDER = ["small", "medium", "large"];
     const PARTICLE_DENSITY = {
       small: { label: "Particles S", scale: 0.62 },
       medium: { label: "Particles M", scale: 1 },
-      large: { label: "Particles L", scale: 1.38 }
+      large: { label: "Particles L", scale: 1.38 },
+      xlarge: { label: "Part XL", scale: 2.2 },
+      ultra: { label: "Part 2K", scale: 3.4 },
+      storm: { label: "Part Max", scale: 5.5 }
     };
-    const PARTICLE_ORDER = ["small", "medium", "large"];
+    const PARTICLE_ORDER = ["small", "medium", "large", "xlarge", "ultra", "storm"];
     const PARTICLE_KIND_COLORS = [
       "rgba(0,255,204,",
       "rgba(255,204,102,",
@@ -949,8 +976,8 @@
         canvasScaleDesktop: 1,
         canvasScaleMobile: 0.86,
         maxTrail: 18,
-        particleMax: 360,
-        particleEmit: 1.15,
+        particleMax: 520,
+        particleEmit: 1.25,
         drawAllPoints: true,
         skipLabelsOnMobile: false
       },
@@ -963,8 +990,8 @@
         canvasScaleDesktop: 0.92,
         canvasScaleMobile: 0.7,
         maxTrail: 12,
-        particleMax: 240,
-        particleEmit: 0.82,
+        particleMax: 320,
+        particleEmit: 0.92,
         drawAllPoints: true,
         skipLabelsOnMobile: true
       },
@@ -1005,6 +1032,8 @@
       dimBg: false,
       faceMosaic: false,
       mosaicSize: "medium",
+      wireField: false,
+      wireIntensity: "medium",
       particleMode: false,
       particleDensity: "medium",
       gestureLabel: "IDLE",
@@ -1081,6 +1110,7 @@
 
       resizeCanvas();
       if (state.particleMode) ensureParticlePool(true);
+      updateParticleDensityUI();
     }
 
     function setProfile(profileName) {
@@ -1130,6 +1160,43 @@
       const styles = Object.keys(STYLE_COPY);
       const next = styles[Math.floor(Math.random() * styles.length)];
       selectStyle(next);
+    }
+
+    function updateWireUI() {
+      if (DOM.btnWireField) {
+        DOM.btnWireField.classList.toggle("active", state.wireField);
+        DOM.btnWireField.textContent = state.wireField ? "Wire ON" : "Wire Field";
+      }
+      if (DOM.btnWireIntensity) {
+        const preset = WIRE_PRESETS[state.wireIntensity] || WIRE_PRESETS.medium;
+        DOM.btnWireIntensity.textContent = preset.label;
+        DOM.btnWireIntensity.classList.toggle("active", state.wireIntensity !== "medium");
+      }
+      if (DOM.wireStatus) {
+        DOM.wireStatus.textContent = state.wireField ? "ON" : "OFF";
+        DOM.wireStatus.style.color = state.wireField ? "var(--blue)" : "var(--text-2)";
+      }
+    }
+
+    function getParticleLimit() {
+      const profile = getActiveProfile();
+      const density = PARTICLE_DENSITY[state.particleDensity] || PARTICLE_DENSITY.medium;
+      return Math.max(80, Math.floor((profile.particleMax || 220) * density.scale));
+    }
+
+    function updateParticleDensityUI() {
+      const density = PARTICLE_DENSITY[state.particleDensity] || PARTICLE_DENSITY.medium;
+      const limit = getParticleLimit();
+
+      if (DOM.btnParticleDensity) {
+        DOM.btnParticleDensity.textContent = density.label;
+        DOM.btnParticleDensity.classList.toggle("active", state.particleDensity !== "medium");
+      }
+
+      if (DOM.particleLimitStatus) {
+        DOM.particleLimitStatus.textContent = String(limit);
+        DOM.particleLimitStatus.style.color = limit >= 1000 ? "var(--amber)" : "var(--mint)";
+      }
     }
 
     function setupUI() {
@@ -1193,6 +1260,24 @@
         DOM.btnMosaicSize.classList.toggle("active", state.mosaicSize !== "medium");
       });
 
+      DOM.btnWireField.addEventListener("click", () => {
+        state.wireField = !state.wireField;
+        updateWireUI();
+        if (state.wireField) {
+          DOM.captionKicker.textContent = "2-2 / DIGITAL WIRE FIELD";
+          DOM.captionMain.textContent = "트래킹 포인트가 서로 엉키는 디지털 와이어";
+          DOM.captionSub.textContent = "손 · 얼굴 · 주변 앵커 연결선 · 글리치 노드 · 깊이감 있는 메쉬 렌더링";
+        } else if (!state.particleMode) {
+          updateCaption();
+        }
+      });
+
+      DOM.btnWireIntensity.addEventListener("click", () => {
+        const index = WIRE_ORDER.indexOf(state.wireIntensity);
+        state.wireIntensity = WIRE_ORDER[(index + 1) % WIRE_ORDER.length];
+        updateWireUI();
+      });
+
       DOM.btnParticleMode.addEventListener("click", () => {
         state.particleMode = !state.particleMode;
         DOM.btnParticleMode.classList.toggle("active", state.particleMode);
@@ -1206,15 +1291,20 @@
           state.gestureLabel = "IDLE";
           DOM.gestureStatus.textContent = "IDLE";
           DOM.gestureVal.textContent = "IDLE";
-          updateCaption();
+          if (state.wireField) {
+            DOM.captionKicker.textContent = "2-2 / DIGITAL WIRE FIELD";
+            DOM.captionMain.textContent = "트래킹 포인트가 서로 엉키는 디지털 와이어";
+            DOM.captionSub.textContent = "손 · 얼굴 · 주변 앵커 연결선 · 글리치 노드 · 깊이감 있는 메쉬 렌더링";
+          } else {
+            updateCaption();
+          }
         }
       });
 
       DOM.btnParticleDensity.addEventListener("click", () => {
         const index = PARTICLE_ORDER.indexOf(state.particleDensity);
         state.particleDensity = PARTICLE_ORDER[(index + 1) % PARTICLE_ORDER.length];
-        DOM.btnParticleDensity.textContent = PARTICLE_DENSITY[state.particleDensity].label;
-        DOM.btnParticleDensity.classList.toggle("active", state.particleDensity !== "medium");
+        updateParticleDensityUI();
         ensureParticlePool(true);
       });
 
@@ -1259,6 +1349,8 @@
       DOM.scanlineOverlay.style.display = "none";
       updateCaption();
       updateProfileUI();
+      updateWireUI();
+      updateParticleDensityUI();
     }
 
     function updateCameraView(image) {
@@ -1769,12 +1861,6 @@
       ctx.restore();
     }
 
-    function getParticleLimit() {
-      const profile = getActiveProfile();
-      const density = PARTICLE_DENSITY[state.particleDensity] || PARTICLE_DENSITY.medium;
-      return Math.max(80, Math.floor((profile.particleMax || 220) * density.scale));
-    }
-
     function ensureParticlePool(forceResize = false) {
       const limit = getParticleLimit();
       if (state.particles && state.particles.limit === limit && !forceResize) return state.particles;
@@ -1800,6 +1886,42 @@
       const dx = ax - bx;
       const dy = ay - by;
       return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getBufferedPoint(buffer, pointId) {
+      const idx = pointId * 2;
+      return {
+        x: buffer[idx],
+        y: buffer[idx + 1]
+      };
+    }
+
+    function getAveragePoint(buffer, pointIds) {
+      let x = 0;
+      let y = 0;
+
+      for (let i = 0; i < pointIds.length; i++) {
+        const point = getBufferedPoint(buffer, pointIds[i]);
+        x += point.x;
+        y += point.y;
+      }
+
+      return {
+        x: x / pointIds.length,
+        y: y / pointIds.length
+      };
+    }
+
+    function getPalmMetrics(buffer) {
+      const center = getAveragePoint(buffer, PALM_CORE_POINTS);
+      const indexBase = getBufferedPoint(buffer, 5);
+      const pinkyBase = getBufferedPoint(buffer, 17);
+
+      return {
+        x: center.x,
+        y: center.y,
+        span: Math.max(24, distance2D(indexBase.x, indexBase.y, pinkyBase.x, pinkyBase.y))
+      };
     }
 
     function spawnParticle(x, y, vx, vy, life, size, kind = 0) {
@@ -1878,20 +2000,12 @@
     }
 
     function analyzeGesture(buffer, landmarks) {
-      const palmIds = [0, 5, 9, 13, 17];
-      let palmX = 0;
-      let palmY = 0;
-      for (let i = 0; i < palmIds.length; i++) {
-        const idx = palmIds[i] * 2;
-        palmX += buffer[idx];
-        palmY += buffer[idx + 1];
-      }
-      palmX /= palmIds.length;
-      palmY /= palmIds.length;
-
+      const palm = getPalmMetrics(buffer);
+      const palmX = palm.x;
+      const palmY = palm.y;
       const wristX = buffer[0];
       const wristY = buffer[1];
-      const palmSpan = Math.max(22, distance2D(buffer[5 * 2], buffer[5 * 2 + 1], buffer[17 * 2], buffer[17 * 2 + 1]));
+      const palmSpan = Math.max(22, palm.span);
       const fingerDefs = [
         { tip: 4, pip: 3, mcp: 2 },
         { tip: 8, pip: 6, mcp: 5 },
@@ -2115,6 +2229,222 @@
       drawParticles();
     }
 
+    function getHandBounds(buffer) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (let i = 0; i < 21; i++) {
+        const x = buffer[i * 2];
+        const y = buffer[i * 2 + 1];
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      const palm = getPalmMetrics(buffer);
+      const palmSpan = palm.span;
+      const pad = Math.max(30, palmSpan * 0.54);
+      const x = Math.floor(clamp(minX - pad, 0, state.width - 1));
+      const y = Math.floor(clamp(minY - pad, 0, state.height - 1));
+      const right = Math.ceil(clamp(maxX + pad, 0, state.width));
+      const bottom = Math.ceil(clamp(maxY + pad, 0, state.height));
+      return {
+        x,
+        y,
+        w: Math.max(1, right - x),
+        h: Math.max(1, bottom - y),
+        palmSpan,
+        palmX: palm.x,
+        palmY: palm.y
+      };
+    }
+
+    function pushWireNode(nodes, x, y, kind = 0, weight = 1) {
+      nodes.push({ x, y, kind, weight });
+    }
+
+    function addHandWireNodes(nodes, buffer, handIndex, preset, time) {
+      const bounds = getHandBounds(buffer);
+      const pulse = Math.sin(time * 2.1 + handIndex * 1.7) * 0.5 + 0.5;
+
+      for (let i = 0; i < 21; i++) {
+        const isTip = KEY_POINTS.includes(i);
+        pushWireNode(nodes, buffer[i * 2], buffer[i * 2 + 1], isTip ? 2 : 1, isTip ? 1.18 : 0.9);
+      }
+
+      for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
+        const a = HAND_CONNECTIONS[i][0] * 2;
+        const b = HAND_CONNECTIONS[i][1] * 2;
+        pushWireNode(nodes, (buffer[a] + buffer[b]) * 0.5, (buffer[a + 1] + buffer[b + 1]) * 0.5, 0, 0.62);
+      }
+
+      const anchorCount = state.isMobile && state.profile === "battery" ? Math.max(3, preset.anchors - 4) : preset.anchors;
+      for (let i = 0; i < anchorCount; i++) {
+        const angle = (Math.PI * 2 * i) / anchorCount + time * (0.16 + handIndex * 0.04);
+        const radius = bounds.palmSpan * (0.9 + (i % 3) * 0.26 + pulse * 0.08);
+        const wobble = Math.sin(time * 2.7 + i * 1.9 + handIndex) * bounds.palmSpan * 0.12 * preset.jitter;
+        pushWireNode(
+          nodes,
+          bounds.palmX + Math.cos(angle) * (radius + wobble),
+          bounds.palmY + Math.sin(angle) * (radius - wobble * 0.45),
+          3,
+          0.72
+        );
+      }
+    }
+
+    function addFaceWireNodes(nodes) {
+      if (state.faceBoxes.length === 0) return;
+
+      for (let i = 0; i < state.faceBoxes.length; i++) {
+        const box = state.faceBoxes[i];
+        const x = mapNormalizedBoxX(box.x, box.w);
+        const y = mapNormalizedBoxY(box.y);
+        const w = mapNormalizedBoxW(box.w);
+        const h = mapNormalizedBoxH(box.h);
+        const cx = x + w * 0.5;
+        const cy = y + h * 0.5;
+
+        pushWireNode(nodes, cx, cy, 4, 1);
+        pushWireNode(nodes, x, y, 4, 0.68);
+        pushWireNode(nodes, x + w, y, 4, 0.68);
+        pushWireNode(nodes, x + w, y + h, 4, 0.68);
+        pushWireNode(nodes, x, y + h, 4, 0.68);
+        pushWireNode(nodes, cx, y, 4, 0.58);
+        pushWireNode(nodes, x + w, cy, 4, 0.58);
+        pushWireNode(nodes, cx, y + h, 4, 0.58);
+        pushWireNode(nodes, x, cy, 4, 0.58);
+      }
+    }
+
+    function strokeWireSegment(a, b, preset, time, index, hot = false) {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      const nx = -dy / dist;
+      const ny = dx / dist;
+      const flicker = Math.sin(time * 8 + index * 1.37) * 0.5 + 0.5;
+      const bend = Math.sin(time * 2.4 + index * 0.63) * Math.min(34, dist * 0.18) * preset.jitter;
+      const c1x = a.x + dx * 0.34 + nx * bend;
+      const c1y = a.y + dy * 0.34 + ny * bend;
+      const c2x = a.x + dx * 0.68 - nx * bend * 0.72;
+      const c2y = a.y + dy * 0.68 - ny * bend * 0.72;
+      const alpha = preset.alpha * (hot ? 0.72 : 0.28) * (0.72 + flicker * 0.28);
+
+      ctx.strokeStyle = hot
+        ? `rgba(255, 255, 255, ${alpha})`
+        : `rgba(102, 217, 255, ${alpha})`;
+      ctx.lineWidth = hot ? 1.35 : 0.75;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.bezierCurveTo(c1x, c1y, c2x, c2y, b.x, b.y);
+      ctx.stroke();
+
+      if (preset.strands > 1) {
+        ctx.strokeStyle = `rgba(0, 255, 204, ${alpha * 0.42})`;
+        ctx.lineWidth = hot ? 0.8 : 0.55;
+        ctx.beginPath();
+        ctx.moveTo(a.x + nx * 3, a.y + ny * 3);
+        ctx.bezierCurveTo(c1x - nx * 5, c1y - ny * 5, c2x + nx * 4, c2y + ny * 4, b.x - nx * 3, b.y - ny * 3);
+        ctx.stroke();
+      }
+    }
+
+    function drawWireNodes(nodes, preset, time) {
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const size = (node.kind === 2 ? 5.2 : node.kind === 4 ? 6.2 : 3.4) * node.weight;
+        const blink = Math.sin(time * 10 + i * 0.91) * 0.5 + 0.5;
+
+        ctx.fillStyle = node.kind === 4
+          ? `rgba(255, 204, 102, ${0.35 + blink * 0.32})`
+          : `rgba(0, 255, 204, ${0.36 + blink * 0.34})`;
+        ctx.fillRect(node.x - size * 0.5, node.y - size * 0.5, size, size);
+
+        if (node.kind === 2 || node.kind === 4) {
+          ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 + blink * 0.22})`;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(node.x - size, node.y - size, size * 2, size * 2);
+        }
+      }
+    }
+
+    function drawDigitalWireField(buffers) {
+      if (!state.wireField) return;
+
+      const preset = WIRE_PRESETS[state.wireIntensity] || WIRE_PRESETS.medium;
+      const time = performance.now() * 0.001;
+      const nodes = [];
+
+      for (let h = 0; h < buffers.length; h++) {
+        addHandWireNodes(nodes, buffers[h], h, preset, time);
+      }
+      addFaceWireNodes(nodes);
+
+      if (nodes.length < 2) return;
+
+      const maxReach = Math.max(74, Math.min(state.width, state.height) * 0.18 * preset.reach);
+      const maxConnections = state.isMobile
+        ? (state.profile === "battery" ? 34 : 52)
+        : (preset === WIRE_PRESETS.large ? 104 : 76);
+      let drawn = 0;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      for (let h = 0; h < buffers.length; h++) {
+        const buffer = buffers[h];
+        for (let i = 0; i < HAND_CONNECTIONS.length; i++) {
+          const a = HAND_CONNECTIONS[i][0] * 2;
+          const b = HAND_CONNECTIONS[i][1] * 2;
+          strokeWireSegment(
+            { x: buffer[a], y: buffer[a + 1] },
+            { x: buffer[b], y: buffer[b + 1] },
+            preset,
+            time,
+            i + h * 37,
+            true
+          );
+        }
+      }
+
+      for (let i = 0; i < nodes.length && drawn < maxConnections; i++) {
+        const nearest = [];
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[j].x - nodes[i].x;
+          const dy = nodes[j].y - nodes[i].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > maxReach) continue;
+          nearest.push({ index: j, dist });
+        }
+
+        nearest.sort((a, b) => a.dist - b.dist);
+        const take = Math.min(preset.strands + 1, nearest.length);
+        for (let n = 0; n < take && drawn < maxConnections; n++) {
+          const target = nodes[nearest[n].index];
+          const hot = nodes[i].kind === 2 || target.kind === 2 || nodes[i].kind === 4 || target.kind === 4;
+          strokeWireSegment(nodes[i], target, preset, time, drawn + i * 11, hot);
+          drawn++;
+        }
+      }
+
+      ctx.fillStyle = `rgba(0, 255, 204, ${0.025 * preset.alpha})`;
+      for (let i = 0; i < nodes.length - 2; i += 7) {
+        ctx.beginPath();
+        ctx.moveTo(nodes[i].x, nodes[i].y);
+        ctx.lineTo(nodes[i + 1].x, nodes[i + 1].y);
+        ctx.lineTo(nodes[i + 2].x, nodes[i + 2].y);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      drawWireNodes(nodes, preset, time);
+      ctx.restore();
+    }
+
     function drawHandStyle(buffer, handIndex) {
       switch (state.currentStyle) {
         case "grid_point":
@@ -2208,11 +2538,18 @@
       state.detectedHands = landmarksList.length;
 
       const gestureList = [];
+      const buffers = [];
       for (let h = 0; h < Math.min(landmarksList.length, state.maxHands); h++) {
         const buffer = fillCoordBuffer(h, landmarksList[h]);
         const gesture = analyzeGesture(buffer, landmarksList[h]);
+        buffers.push(buffer);
         gestureList.push(gesture);
-        drawHandStyle(buffer, h);
+      }
+
+      drawDigitalWireField(buffers);
+
+      for (let h = 0; h < buffers.length; h++) {
+        drawHandStyle(buffers[h], h);
       }
 
       updateParticleSystem(gestureList);
